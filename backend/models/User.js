@@ -81,6 +81,17 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   
+  // Assigned Admin (for multi-admin system)
+  assignedAdmin: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    default: null
+  },
+  adminUrlSlug: {
+    type: String,
+    default: null
+  },
+  
   // Bank Details for Withdrawals
   bankDetails: {
     bankName: { type: String, default: '' },
@@ -97,6 +108,10 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  passwordChangedAt: {
+    type: Date,
+    default: null
   }
 })
 
@@ -104,6 +119,8 @@ const userSchema = new mongoose.Schema({
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next()
   this.password = await bcrypt.hash(this.password, 12)
+  // Set passwordChangedAt when password is modified
+  this.passwordChangedAt = new Date()
   next()
 })
 

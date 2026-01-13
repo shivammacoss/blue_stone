@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   Home, BarChart2, TrendingUp, LineChart, MoreHorizontal,
   Copy, Users, HelpCircle, FileText, UserCircle, LogOut, Wallet,
@@ -8,12 +8,15 @@ import {
   ArrowDownCircle, ArrowUpCircle, Check, Pencil, Trash2
 } from 'lucide-react'
 import metaApiService from '../services/metaApi'
+import priceStreamService from '../services/priceStream'
 
 const API_URL = 'http://localhost:5001/api'
 
 const MobileTradingApp = () => {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('home')
+  const [searchParams] = useSearchParams()
+  const accountIdFromUrl = searchParams.get('account')
+  const [activeTab, setActiveTab] = useState(accountIdFromUrl ? 'trade' : 'home')
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [showOrderPanel, setShowOrderPanel] = useState(false)
   const [selectedInstrument, setSelectedInstrument] = useState(null)
@@ -136,13 +139,45 @@ const MobileTradingApp = () => {
     'LTCUSD', 'AVAXUSD', 'LINKUSD'
   ]
 
-  // Real-time price updates - fetch every 1 second like TradingPage
+  // Real-time price updates via WebSocket for institutional-grade streaming
   useEffect(() => {
+    const unsubscribe = priceStreamService.subscribe('mobileTradingApp', (prices, updated, timestamp) => {
+      // Only update if we have valid prices (prevent flickering to zero)
+      if (!prices || Object.keys(prices).length === 0) return
+      
+      // Merge prices to prevent losing existing data
+      setLivePrices(prev => {
+        const merged = { ...prev }
+        Object.entries(prices).forEach(([symbol, price]) => {
+          if (price && price.bid) {
+            merged[symbol] = price
+          }
+        })
+        return merged
+      })
+      
+      // Update instruments with live prices (only if price is valid)
+      setInstruments(prev => prev.map(inst => {
+        const priceData = prices[inst.symbol]
+        if (priceData && priceData.bid && priceData.bid > 0) {
+          const bid = priceData.bid
+          const ask = priceData.ask || priceData.bid
+          const spread = Math.abs(ask - bid) || (bid * 0.0001)
+          return { ...inst, bid, ask, spread }
+        }
+        return inst
+      }))
+      
+      // Check pending orders and SL/TP in background
+      if (Object.keys(prices).length > 0) {
+        checkPendingOrdersAndSlTp(prices)
+      }
+    })
+    
+    // Fallback: also fetch via HTTP for initial load
     fetchLivePrices()
-    const priceInterval = setInterval(() => {
-      fetchLivePrices()
-    }, 1000)
-    return () => clearInterval(priceInterval)
+    
+    return () => unsubscribe()
   }, [])
 
   // Fetch live prices using metaApiService (same as TradingPage)
@@ -223,7 +258,17 @@ const MobileTradingApp = () => {
       const data = await res.json()
       setAccounts(data.accounts || [])
       if (data.accounts?.length > 0) {
-        setSelectedAccount(data.accounts[0])
+        // If account ID is passed in URL, select that account
+        if (accountIdFromUrl) {
+          const accountFromUrl = data.accounts.find(acc => acc._id === accountIdFromUrl)
+          if (accountFromUrl) {
+            setSelectedAccount(accountFromUrl)
+          } else {
+            setSelectedAccount(data.accounts[0])
+          }
+        } else {
+          setSelectedAccount(data.accounts[0])
+        }
       }
     } catch (e) {}
     setLoading(false)
@@ -282,6 +327,14 @@ const MobileTradingApp = () => {
     setIsExecuting(true)
 
     const prices = livePrices[selectedInstrument.symbol] || {}
+    
+    // Check if market data is available
+    if (!prices.bid || !prices.ask || prices.bid <= 0 || prices.ask <= 0) {
+      showNotification('Market is closed or no price data available', 'error')
+      setIsExecuting(false)
+      return
+    }
+
     try {
       const res = await fetch(`${API_URL}/trade/open`, {
         method: 'POST',
@@ -294,8 +347,8 @@ const MobileTradingApp = () => {
           side: orderSide,
           orderType: orderType === 'market' ? 'MARKET' : 'PENDING',
           quantity: parseFloat(volume),
-          bid: prices.bid || 0,
-          ask: prices.ask || 0,
+          bid: prices.bid,
+          ask: prices.ask,
           sl: stopLoss ? parseFloat(stopLoss) : null,
           tp: takeProfit ? parseFloat(takeProfit) : null
         })
@@ -323,14 +376,21 @@ const MobileTradingApp = () => {
     }
 
     const prices = livePrices[trade.symbol] || {}
+    
+    // Check if market data is available
+    if (!prices.bid || !prices.ask || prices.bid <= 0 || prices.ask <= 0) {
+      showNotification('Market is closed or no price data. Cannot close trade.', 'error')
+      return
+    }
+
     try {
       const res = await fetch(`${API_URL}/trade/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tradeId: tradeId,
-          bid: prices.bid || trade.openPrice,
-          ask: prices.ask || trade.openPrice
+          bid: prices.bid,
+          ask: prices.ask
         })
       })
       const data = await res.json()
@@ -440,15 +500,23 @@ const MobileTradingApp = () => {
   const calculatePnl = (trade) => {
     const prices = getPrice(trade.symbol)
     const currentPrice = trade.side === 'BUY' ? prices.bid : prices.ask
-    if (!currentPrice) return 0
+    // Return previous PnL or 0 if no valid price (prevent flickering)
+    if (!currentPrice || currentPrice <= 0) return trade._lastPnl || 0
     const pnl = trade.side === 'BUY'
       ? (currentPrice - trade.openPrice) * trade.quantity * (trade.contractSize || 100000)
       : (trade.openPrice - currentPrice) * trade.quantity * (trade.contractSize || 100000)
+    trade._lastPnl = pnl // Cache for fallback
     return pnl
   }
 
   // Calculate total floating PnL and update account summary in real-time
-  const totalFloatingPnl = openTrades.reduce((sum, trade) => sum + calculatePnl(trade), 0)
+  // Only calculate if we have valid prices
+  const hasValidPrices = Object.keys(livePrices).length > 0 && 
+    openTrades.some(t => livePrices[t.symbol]?.bid > 0)
+  
+  const totalFloatingPnl = hasValidPrices 
+    ? openTrades.reduce((sum, trade) => sum + calculatePnl(trade), 0)
+    : (accountSummary.floatingPnl || 0) // Use cached value if no valid prices
   const totalUsedMargin = openTrades.reduce((sum, trade) => sum + (trade.marginUsed || 0), 0)
   
   // Real-time equity calculation
@@ -768,7 +836,7 @@ const MobileTradingApp = () => {
           </div>
           <div className="flex justify-between px-4 py-2.5">
             <span className="text-gray-400 text-sm">Free Margin</span>
-            <span className="text-white text-sm">{realTimeFreeMargin.toFixed(2)}</span>
+            <span className={`text-sm ${realTimeFreeMargin >= 0 ? 'text-blue-400' : 'text-red-500'}`}>{realTimeFreeMargin.toFixed(2)}</span>
           </div>
           <div className="flex justify-between px-4 py-2.5">
             <span className="text-gray-400 text-sm">Floating PL</span>
@@ -822,7 +890,7 @@ const MobileTradingApp = () => {
                           <div className="flex items-center gap-2">
                             <span className="text-white font-medium text-sm">{trade.symbol}</span>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                              trade.side === 'BUY' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
+                              trade.side === 'BUY' ? 'bg-blue-500/20 text-blue-500' : 'bg-red-500/20 text-red-500'
                             }`}>
                               {trade.side}
                             </span>
@@ -925,7 +993,7 @@ const MobileTradingApp = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-white font-medium">{order.symbol}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                        order.side === 'BUY' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
+                        order.side === 'BUY' ? 'bg-blue-500/20 text-blue-500' : 'bg-red-500/20 text-red-500'
                       }`}>
                         {order.orderType}
                       </span>
@@ -987,6 +1055,11 @@ const MobileTradingApp = () => {
                       <span className={`text-xs ${trade.side === 'BUY' ? 'text-green-500' : 'text-red-500'}`}>
                         {trade.side}
                       </span>
+                      {trade.closedBy === 'ADMIN' && (
+                        <span className="text-xs bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded">
+                          Admin Close
+                        </span>
+                      )}
                     </div>
                     <span className={`font-semibold ${trade.realizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                       {trade.realizedPnl >= 0 ? '+' : ''}${trade.realizedPnl?.toFixed(2)}
@@ -1111,7 +1184,7 @@ const MobileTradingApp = () => {
               setOrderSide('BUY')
               setShowOrderPanel(true)
             }}
-            className="flex-1 py-3 bg-green-500 text-white font-semibold rounded-xl"
+            className="flex-1 py-3 bg-blue-500 text-white font-semibold rounded-xl"
           >
             BUY
           </button>
@@ -1189,26 +1262,42 @@ const MobileTradingApp = () => {
                 </button>
               </div>
 
-              {/* Prices */}
-              <div className="flex items-center justify-between mb-6 p-4 bg-dark-700 rounded-xl">
-                <div className="text-center">
-                  <p className="text-gray-500 text-xs mb-1">Bid</p>
-                  <p className="text-red-500 text-xl font-bold">
+              {/* Leverage Display */}
+              <div className="flex items-center justify-between bg-dark-700 rounded-lg px-4 py-2 mb-4">
+                <span className="text-gray-400 text-sm">Leverage</span>
+                <span className="text-yellow-500 font-bold">{selectedAccount?.leverage || '1:100'}</span>
+              </div>
+
+              {/* One-Click Buy/Sell */}
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={() => { setOrderSide('SELL'); executeOrder() }}
+                  disabled={isExecuting}
+                  className="flex-1 py-3 bg-red-600 rounded-xl disabled:opacity-50"
+                >
+                  <p className="text-white text-xs">SELL</p>
+                  <p className="text-white text-lg font-bold">
                     {getPrice(selectedInstrument.symbol).bid?.toFixed(selectedInstrument.category === 'Forex' ? 5 : 2) || '-'}
                   </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-500 text-xs mb-1">Spread</p>
-                  <p className="text-white">
-                    {((getPrice(selectedInstrument.symbol).ask - getPrice(selectedInstrument.symbol).bid) * (selectedInstrument.category === 'Forex' ? 10000 : 1)).toFixed(1)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-500 text-xs mb-1">Ask</p>
-                  <p className="text-green-500 text-xl font-bold">
+                </button>
+                <button
+                  onClick={() => { setOrderSide('BUY'); executeOrder() }}
+                  disabled={isExecuting}
+                  className="flex-1 py-3 bg-blue-600 rounded-xl disabled:opacity-50"
+                >
+                  <p className="text-white text-xs">BUY</p>
+                  <p className="text-white text-lg font-bold">
                     {getPrice(selectedInstrument.symbol).ask?.toFixed(selectedInstrument.category === 'Forex' ? 5 : 2) || '-'}
                   </p>
-                </div>
+                </button>
+              </div>
+
+              {/* Prices Info */}
+              <div className="flex items-center justify-center mb-4 text-xs">
+                <span className="text-gray-500">Spread: </span>
+                <span className="text-white ml-1">
+                  {((getPrice(selectedInstrument.symbol).ask - getPrice(selectedInstrument.symbol).bid) * (selectedInstrument.category === 'Forex' ? 10000 : 1)).toFixed(1)} pips
+                </span>
               </div>
 
               {/* Order Type */}
@@ -1292,7 +1381,7 @@ const MobileTradingApp = () => {
                 <button
                   onClick={() => { setOrderSide('BUY'); executeOrder() }}
                   disabled={isExecuting}
-                  className="flex-1 py-4 bg-green-500 text-white font-semibold rounded-xl disabled:opacity-50"
+                  className="flex-1 py-4 bg-blue-500 text-white font-semibold rounded-xl disabled:opacity-50"
                 >
                   {isExecuting ? 'Executing...' : 'BUY'}
                 </button>

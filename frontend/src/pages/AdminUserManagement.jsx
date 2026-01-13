@@ -21,8 +21,13 @@ import {
   Edit,
   Gift,
   LogIn,
-  CreditCard
+  CreditCard,
+  Plus,
+  Minus,
+  Key
 } from 'lucide-react'
+
+const API_URL = 'http://localhost:5001/api'
 
 const AdminUserManagement = () => {
   const [users, setUsers] = useState([])
@@ -33,6 +38,11 @@ const AdminUserManagement = () => {
   const [modalType, setModalType] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [activeTab, setActiveTab] = useState('users')
+  const [passwordResetRequests, setPasswordResetRequests] = useState([])
+  const [resetRequestStats, setResetRequestStats] = useState({ pending: 0, completed: 0, rejected: 0 })
+  const [selectedResetRequest, setSelectedResetRequest] = useState(null)
+  const [resetPassword, setResetPassword] = useState('')
 
   // Form states
   const [newPassword, setNewPassword] = useState('')
@@ -46,17 +56,21 @@ const AdminUserManagement = () => {
   const [creditReason, setCreditReason] = useState('')
   const [userAccounts, setUserAccounts] = useState([])
   const [selectedAccountId, setSelectedAccountId] = useState('')
+  const [accountFundAmount, setAccountFundAmount] = useState('')
+  const [accountFundReason, setAccountFundReason] = useState('')
+  const [userWalletBalance, setUserWalletBalance] = useState(0)
   
   const adminUser = JSON.parse(localStorage.getItem('adminUser') || '{}')
 
   useEffect(() => {
     fetchUsers()
+    fetchPasswordResetRequests()
   }, [])
 
   const fetchUsers = async () => {
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:5001/api/admin/users')
+      const response = await fetch(`${API_URL}/admin/users`)
       if (response.ok) {
         const data = await response.json()
         setUsers(data.users || [])
@@ -65,6 +79,51 @@ const AdminUserManagement = () => {
       console.error('Error fetching users:', error)
     }
     setLoading(false)
+  }
+
+  const fetchPasswordResetRequests = async () => {
+    try {
+      const response = await fetch(`${API_URL}/admin/password-reset-requests`)
+      if (response.ok) {
+        const data = await response.json()
+        setPasswordResetRequests(data.requests || [])
+        setResetRequestStats(data.stats || { pending: 0, completed: 0, rejected: 0 })
+      }
+    } catch (error) {
+      console.error('Error fetching password reset requests:', error)
+    }
+  }
+
+  const handleProcessResetRequest = async (requestId, action) => {
+    if (action === 'approve' && (!resetPassword || resetPassword.length < 6)) {
+      setMessage({ type: 'error', text: 'Password must be at least 6 characters' })
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/admin/password-reset-requests/${requestId}/process`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          newPassword: resetPassword,
+          adminRemarks: action === 'approve' ? 'Password reset completed' : 'Request rejected'
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMessage({ type: 'success', text: data.message })
+        setSelectedResetRequest(null)
+        setResetPassword('')
+        fetchPasswordResetRequests()
+      } else {
+        setMessage({ type: 'error', text: data.message })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error processing request' })
+    }
+    setActionLoading(false)
   }
 
   const filteredUsers = users.filter(user => 
@@ -96,6 +155,18 @@ const AdminUserManagement = () => {
     }
   }
 
+  const fetchUserWallet = async (userId) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/wallet/${userId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setUserWalletBalance(data.wallet?.balance || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching user wallet:', error)
+    }
+  }
+
   const openModal = async (type, user) => {
     setSelectedUser(user)
     setModalType(type)
@@ -114,9 +185,10 @@ const AdminUserManagement = () => {
     setUserAccounts([])
     setSelectedAccountId('')
     
-    // Fetch user's trading accounts for credit management
+    // Fetch user's trading accounts and wallet for view
     if (type === 'credit' || type === 'view') {
       await fetchUserAccounts(user._id)
+      await fetchUserWallet(user._id)
     }
   }
 
@@ -176,8 +248,9 @@ const AdminUserManagement = () => {
       
       if (response.ok) {
         setMessage({ type: 'success', text: `$${deductAmount} deducted successfully` })
+        await fetchUserWallet(selectedUser._id)
         setTimeout(() => {
-          closeModal()
+          setModalType('view')
           fetchUsers()
         }, 1500)
       } else {
@@ -209,8 +282,9 @@ const AdminUserManagement = () => {
       
       if (response.ok) {
         setMessage({ type: 'success', text: `$${addFundAmount} added successfully` })
+        await fetchUserWallet(selectedUser._id)
         setTimeout(() => {
-          closeModal()
+          setModalType('view')
           fetchUsers()
         }, 1500)
       } else {
@@ -327,8 +401,9 @@ const AdminUserManagement = () => {
       if (response.ok) {
         const data = await response.json()
         setMessage({ type: 'success', text: `$${creditAmount} credit added successfully` })
+        await fetchUserAccounts(selectedUser._id)
         setTimeout(() => {
-          closeModal()
+          setModalType('view')
           fetchUsers()
         }, 1500)
       } else {
@@ -337,6 +412,84 @@ const AdminUserManagement = () => {
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Error adding credit' })
+    }
+    setActionLoading(false)
+  }
+
+  // Add fund to trading account
+  const handleAddFundToAccount = async () => {
+    if (!accountFundAmount || parseFloat(accountFundAmount) <= 0) {
+      setMessage({ type: 'error', text: 'Please enter a valid amount' })
+      return
+    }
+    if (!selectedAccountId) {
+      setMessage({ type: 'error', text: 'No account selected' })
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const response = await fetch(`http://localhost:5001/api/admin/trading-account/${selectedAccountId}/add-fund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          amount: parseFloat(accountFundAmount),
+          reason: accountFundReason || 'Admin fund addition'
+        })
+      })
+      
+      if (response.ok) {
+        setMessage({ type: 'success', text: `$${accountFundAmount} added to account successfully` })
+        await fetchUserAccounts(selectedUser._id)
+        setTimeout(() => {
+          setModalType('view')
+          fetchUsers()
+        }, 1500)
+      } else {
+        const data = await response.json()
+        setMessage({ type: 'error', text: data.message || 'Failed to add funds' })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error adding funds to account' })
+    }
+    setActionLoading(false)
+  }
+
+  // Deduct fund from trading account
+  const handleDeductFromAccount = async () => {
+    if (!accountFundAmount || parseFloat(accountFundAmount) <= 0) {
+      setMessage({ type: 'error', text: 'Please enter a valid amount' })
+      return
+    }
+    if (!selectedAccountId) {
+      setMessage({ type: 'error', text: 'No account selected' })
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const response = await fetch(`http://localhost:5001/api/admin/trading-account/${selectedAccountId}/deduct`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          amount: parseFloat(accountFundAmount),
+          reason: accountFundReason || 'Admin deduction'
+        })
+      })
+      
+      if (response.ok) {
+        setMessage({ type: 'success', text: `$${accountFundAmount} deducted from account successfully` })
+        await fetchUserAccounts(selectedUser._id)
+        setTimeout(() => {
+          setModalType('view')
+          fetchUsers()
+        }, 1500)
+      } else {
+        const data = await response.json()
+        setMessage({ type: 'error', text: data.message || 'Failed to deduct funds' })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error deducting funds from account' })
     }
     setActionLoading(false)
   }
@@ -434,9 +587,30 @@ const AdminUserManagement = () => {
                   <p className="text-gray-500 text-xs mb-1">Email</p>
                   <p className="text-white">{selectedUser.email}</p>
                 </div>
-                <div className="bg-dark-700 p-3 rounded-lg">
-                  <p className="text-gray-500 text-xs mb-1">Wallet Balance</p>
-                  <p className="text-white text-xl font-bold">${selectedUser.walletBalance?.toFixed(2) || '0.00'}</p>
+                {/* Wallet Balance with Actions */}
+                <div className="bg-gradient-to-r from-green-500/10 to-teal-500/10 border border-green-500/30 p-4 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">💰 Main Wallet Balance</p>
+                      <p className="text-white text-2xl font-bold">${userWalletBalance?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setModalType('addFundWallet')}
+                        className="p-2 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-colors"
+                        title="Add to Wallet"
+                      >
+                        <Plus size={16} />
+                      </button>
+                      <button 
+                        onClick={() => setModalType('deductWallet')}
+                        className="p-2 bg-orange-500/20 text-orange-500 rounded-lg hover:bg-orange-500/30 transition-colors"
+                        title="Deduct from Wallet"
+                      >
+                        <Minus size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Quick Actions */}
@@ -485,42 +659,83 @@ const AdminUserManagement = () => {
                     <span className="text-sm">{selectedUser.isBanned ? 'Unban' : 'Ban'}</span>
                   </button>
                   <button 
-                    onClick={() => setModalType('credit')}
-                    className="flex items-center justify-center gap-2 p-3 bg-purple-500/20 text-purple-500 rounded-lg hover:bg-purple-500/30 transition-colors"
+                    onClick={() => setModalType('tradingAccounts')}
+                    className="flex items-center justify-center gap-2 p-3 bg-teal-500/20 text-teal-500 rounded-lg hover:bg-teal-500/30 transition-colors"
                   >
-                    <Gift size={16} />
-                    <span className="text-sm">Add Credit</span>
+                    <CreditCard size={16} />
+                    <span className="text-sm">Trading Accounts</span>
                   </button>
                   <button 
                     onClick={handleLoginAsUser}
                     disabled={actionLoading}
-                    className="flex items-center justify-center gap-2 p-3 bg-cyan-500/20 text-cyan-500 rounded-lg hover:bg-cyan-500/30 transition-colors col-span-2"
+                    className="flex items-center justify-center gap-2 p-3 bg-cyan-500/20 text-cyan-500 rounded-lg hover:bg-cyan-500/30 transition-colors"
                   >
                     <LogIn size={16} />
                     <span className="text-sm">{actionLoading ? 'Opening...' : 'Login as User'}</span>
                   </button>
                 </div>
+              </div>
+            )}
 
-                {/* Trading Accounts */}
-                {userAccounts.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-700">
-                    <h4 className="text-white font-medium mb-2">Trading Accounts</h4>
-                    <div className="space-y-2">
-                      {userAccounts.map(acc => (
-                        <div key={acc._id} className="bg-dark-700 p-3 rounded-lg flex justify-between items-center">
+            {/* Trading Accounts Modal */}
+            {modalType === 'tradingAccounts' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-teal-500 mb-2">
+                  <CreditCard size={20} />
+                  <h4 className="font-semibold">Trading Accounts</h4>
+                </div>
+                {userAccounts.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500 text-sm bg-dark-700 rounded-lg">
+                    No trading accounts found
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                    {userAccounts.map(acc => (
+                      <div key={acc._id} className="bg-dark-700 rounded-lg p-4 border border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
                           <div>
-                            <p className="text-white text-sm">{acc.accountId}</p>
-                            <p className="text-gray-500 text-xs">Leverage: {acc.leverage}</p>
+                            <p className="text-white font-medium">{acc.accountId}</p>
+                            <p className="text-gray-500 text-xs">{acc.accountTypeId?.name || 'Standard'} • Leverage: {acc.leverage}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-white font-medium">${acc.balance?.toFixed(2)}</p>
-                            <p className="text-purple-400 text-xs">Credit: ${acc.credit?.toFixed(2) || '0.00'}</p>
+                            <p className="text-white text-lg font-bold">${acc.balance?.toFixed(2) || '0.00'}</p>
+                            {acc.credit > 0 && (
+                              <p className="text-purple-400 text-xs">Credit: ${acc.credit?.toFixed(2)}</p>
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => { setSelectedAccountId(acc._id); setModalType('addFundAccount'); }}
+                            className="flex-1 py-2 text-xs bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500/30 transition-colors flex items-center justify-center gap-1"
+                          >
+                            <Plus size={14} /> Add Fund
+                          </button>
+                          <button 
+                            onClick={() => { setSelectedAccountId(acc._id); setModalType('deductAccount'); }}
+                            className="flex-1 py-2 text-xs bg-orange-500/20 text-orange-500 rounded-lg hover:bg-orange-500/30 transition-colors flex items-center justify-center gap-1"
+                          >
+                            <Minus size={14} /> Deduct
+                          </button>
+                          <button 
+                            onClick={() => { setSelectedAccountId(acc._id); setModalType('credit'); }}
+                            className="flex-1 py-2 text-xs bg-purple-500/20 text-purple-500 rounded-lg hover:bg-purple-500/30 transition-colors flex items-center justify-center gap-1"
+                          >
+                            <Gift size={14} /> Credit
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => setModalType('view')}
+                    className="flex-1 py-3 bg-dark-700 text-gray-400 rounded-lg hover:bg-dark-600 transition-colors"
+                  >
+                    Back
+                  </button>
+                </div>
               </div>
             )}
 
@@ -577,8 +792,8 @@ const AdminUserManagement = () => {
                   <h4 className="font-semibold">Deduct Funds</h4>
                 </div>
                 <div className="bg-dark-700 p-3 rounded-lg">
-                  <p className="text-gray-500 text-xs mb-1">Current Balance</p>
-                  <p className="text-white text-xl font-bold">${selectedUser.walletBalance?.toFixed(2) || '0.00'}</p>
+                  <p className="text-gray-500 text-xs mb-1">Current Wallet Balance</p>
+                  <p className="text-white text-xl font-bold">${userWalletBalance?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</p>
                 </div>
                 <div>
                   <label className="text-gray-400 text-sm mb-1 block">Amount to Deduct ($)</label>
@@ -628,8 +843,8 @@ const AdminUserManagement = () => {
                   <h4 className="font-semibold">Add Funds</h4>
                 </div>
                 <div className="bg-dark-700 p-3 rounded-lg">
-                  <p className="text-gray-500 text-xs mb-1">Current Balance</p>
-                  <p className="text-white text-xl font-bold">${selectedUser.walletBalance?.toFixed(2) || '0.00'}</p>
+                  <p className="text-gray-500 text-xs mb-1">Current Wallet Balance</p>
+                  <p className="text-white text-xl font-bold">${userWalletBalance?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</p>
                 </div>
                 <div>
                   <label className="text-gray-400 text-sm mb-1 block">Amount to Add ($)</label>
@@ -860,6 +1075,212 @@ const AdminUserManagement = () => {
                 </div>
               </div>
             )}
+
+            {/* Add Fund to Wallet */}
+            {modalType === 'addFundWallet' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-green-500 mb-2">
+                  <Wallet size={20} />
+                  <h4 className="font-semibold">Add Funds to Wallet</h4>
+                </div>
+                <div className="bg-dark-700 p-3 rounded-lg">
+                  <p className="text-gray-500 text-xs mb-1">Current Wallet Balance</p>
+                  <p className="text-white text-xl font-bold">${userWalletBalance?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</p>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Amount to Add ($)</label>
+                  <input
+                    type="number"
+                    value={addFundAmount}
+                    onChange={(e) => setAddFundAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Reason (Optional)</label>
+                  <input
+                    type="text"
+                    value={addFundReason}
+                    onChange={(e) => setAddFundReason(e.target.value)}
+                    placeholder="Enter reason"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => setModalType('view')}
+                    className="flex-1 py-3 bg-dark-700 text-gray-400 rounded-lg hover:bg-dark-600 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    onClick={handleAddFund}
+                    disabled={actionLoading}
+                    className="flex-1 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Processing...' : 'Add to Wallet'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Deduct from Wallet */}
+            {modalType === 'deductWallet' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-orange-500 mb-2">
+                  <Wallet size={20} />
+                  <h4 className="font-semibold">Deduct from Wallet</h4>
+                </div>
+                <div className="bg-dark-700 p-3 rounded-lg">
+                  <p className="text-gray-500 text-xs mb-1">Current Wallet Balance</p>
+                  <p className="text-white text-xl font-bold">${userWalletBalance?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</p>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Amount to Deduct ($)</label>
+                  <input
+                    type="number"
+                    value={deductAmount}
+                    onChange={(e) => setDeductAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Reason (Optional)</label>
+                  <input
+                    type="text"
+                    value={deductReason}
+                    onChange={(e) => setDeductReason(e.target.value)}
+                    placeholder="Enter reason"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => setModalType('view')}
+                    className="flex-1 py-3 bg-dark-700 text-gray-400 rounded-lg hover:bg-dark-600 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    onClick={handleDeductFund}
+                    disabled={actionLoading}
+                    className="flex-1 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Processing...' : 'Deduct from Wallet'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Add Fund to Trading Account */}
+            {modalType === 'addFundAccount' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-green-500 mb-2">
+                  <DollarSign size={20} />
+                  <h4 className="font-semibold">Add Funds to Trading Account</h4>
+                </div>
+                <div className="bg-dark-700 p-3 rounded-lg">
+                  <p className="text-gray-500 text-xs mb-1">Selected Account</p>
+                  <p className="text-white font-medium">{userAccounts.find(a => a._id === selectedAccountId)?.accountId || 'N/A'}</p>
+                  <p className="text-gray-400 text-sm">Balance: ${userAccounts.find(a => a._id === selectedAccountId)?.balance?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Amount to Add ($)</label>
+                  <input
+                    type="number"
+                    value={accountFundAmount}
+                    onChange={(e) => setAccountFundAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Reason (Optional)</label>
+                  <input
+                    type="text"
+                    value={accountFundReason}
+                    onChange={(e) => setAccountFundReason(e.target.value)}
+                    placeholder="Enter reason"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => { setAccountFundAmount(''); setAccountFundReason(''); setModalType('view'); }}
+                    className="flex-1 py-3 bg-dark-700 text-gray-400 rounded-lg hover:bg-dark-600 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    onClick={handleAddFundToAccount}
+                    disabled={actionLoading}
+                    className="flex-1 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Processing...' : 'Add to Account'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Deduct from Trading Account */}
+            {modalType === 'deductAccount' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-orange-500 mb-2">
+                  <DollarSign size={20} />
+                  <h4 className="font-semibold">Deduct from Trading Account</h4>
+                </div>
+                <div className="bg-dark-700 p-3 rounded-lg">
+                  <p className="text-gray-500 text-xs mb-1">Selected Account</p>
+                  <p className="text-white font-medium">{userAccounts.find(a => a._id === selectedAccountId)?.accountId || 'N/A'}</p>
+                  <p className="text-gray-400 text-sm">Balance: ${userAccounts.find(a => a._id === selectedAccountId)?.balance?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Amount to Deduct ($)</label>
+                  <input
+                    type="number"
+                    value={accountFundAmount}
+                    onChange={(e) => setAccountFundAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-sm mb-1 block">Reason (Optional)</label>
+                  <input
+                    type="text"
+                    value={accountFundReason}
+                    onChange={(e) => setAccountFundReason(e.target.value)}
+                    placeholder="Enter reason"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => { setAccountFundAmount(''); setAccountFundReason(''); setModalType('view'); }}
+                    className="flex-1 py-3 bg-dark-700 text-gray-400 rounded-lg hover:bg-dark-600 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    onClick={handleDeductFromAccount}
+                    disabled={actionLoading}
+                    className="flex-1 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Processing...' : 'Deduct from Account'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -868,6 +1289,148 @@ const AdminUserManagement = () => {
 
   return (
     <AdminLayout title="User Management" subtitle="Manage all registered users">
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'users' ? 'bg-blue-500 text-white' : 'bg-dark-700 text-gray-400 hover:text-white'
+          }`}
+        >
+          Users ({users.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('password-reset')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'password-reset' ? 'bg-blue-500 text-white' : 'bg-dark-700 text-gray-400 hover:text-white'
+          }`}
+        >
+          <Key size={16} />
+          Password Requests
+          {resetRequestStats.pending > 0 && (
+            <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">{resetRequestStats.pending}</span>
+          )}
+        </button>
+      </div>
+
+      {/* Message */}
+      {message.text && (
+        <div className={`mb-4 p-3 rounded-lg ${message.type === 'success' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+          {message.text}
+        </div>
+      )}
+
+      {activeTab === 'password-reset' ? (
+        <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
+          <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800">
+            <div>
+              <h2 className="text-white font-semibold text-lg">Password Reset Requests</h2>
+              <p className="text-gray-500 text-sm">
+                Pending: {resetRequestStats.pending} | Completed: {resetRequestStats.completed} | Rejected: {resetRequestStats.rejected}
+              </p>
+            </div>
+            <button onClick={fetchPasswordResetRequests} className="p-2 bg-dark-700 rounded-lg hover:bg-dark-600">
+              <RefreshCw size={18} className="text-gray-400" />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {passwordResetRequests.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No password reset requests</p>
+            ) : (
+              passwordResetRequests.map(request => (
+                <div key={request._id} className="p-4 bg-dark-700 rounded-xl border border-gray-700">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                        <User size={20} className="text-blue-500" />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">
+                          {request.userId?.firstName} {request.userId?.lastName}
+                        </p>
+                        <p className="text-gray-500 text-sm">{request.email}</p>
+                        {request.newEmail && (
+                          <p className="text-yellow-500 text-xs mt-1">
+                            Wants to change email to: {request.newEmail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-xs ${
+                        request.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-500' :
+                        request.status === 'Completed' ? 'bg-green-500/20 text-green-500' :
+                        'bg-red-500/20 text-red-500'
+                      }`}>
+                        {request.status}
+                      </span>
+                      <span className="text-gray-500 text-xs">
+                        {new Date(request.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {request.status === 'Pending' && (
+                    <div className="mt-4 pt-4 border-t border-gray-600">
+                      {selectedResetRequest === request._id ? (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-gray-400 text-sm mb-1 block">New Password</label>
+                            <input
+                              type="text"
+                              value={resetPassword}
+                              onChange={(e) => setResetPassword(e.target.value)}
+                              placeholder="Enter new password (min 6 chars)"
+                              className="w-full bg-dark-600 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setSelectedResetRequest(null); setResetPassword('') }}
+                              className="px-4 py-2 bg-dark-600 text-gray-400 rounded-lg hover:bg-dark-500 text-sm"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleProcessResetRequest(request._id, 'approve')}
+                              disabled={actionLoading}
+                              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm disabled:opacity-50"
+                            >
+                              {actionLoading ? 'Processing...' : 'Reset Password'}
+                            </button>
+                            <button
+                              onClick={() => handleProcessResetRequest(request._id, 'reject')}
+                              disabled={actionLoading}
+                              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                          <p className="text-gray-500 text-xs">
+                            After resetting, send the new password to user's email manually.
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedResetRequest(request._id)}
+                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+                        >
+                          Process Request
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {request.status !== 'Pending' && request.adminRemarks && (
+                    <p className="mt-2 text-gray-500 text-xs">Remarks: {request.adminRemarks}</p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 border-b border-gray-800">
@@ -949,7 +1512,7 @@ const AdminUserManagement = () => {
                   </div>
                   <div className="flex items-center gap-2 text-gray-400">
                     <Wallet size={14} />
-                    <span className="text-white font-medium">${user.walletBalance?.toFixed(2) || '0.00'}</span>
+                    <span className="text-blue-400 text-sm">Click View for balances</span>
                   </div>
                 </div>
 
@@ -1034,7 +1597,12 @@ const AdminUserManagement = () => {
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <span className="text-white font-medium">${user.walletBalance?.toFixed(2) || '0.00'}</span>
+                      <button 
+                        onClick={() => openModal('view', user)}
+                        className="text-blue-400 hover:text-blue-300 text-sm underline"
+                      >
+                        View Balances
+                      </button>
                     </td>
                     <td className="py-4 px-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -1098,6 +1666,7 @@ const AdminUserManagement = () => {
           </table>
         </div>
       </div>
+      )}
 
       {/* Modal */}
       {renderModal()}

@@ -1,0 +1,82 @@
+import { createContext, useContext, useState, useEffect } from 'react'
+
+const API_URL = 'http://localhost:5001/api'
+
+const ThemeContext = createContext()
+
+export const useTheme = () => {
+  const context = useContext(ThemeContext)
+  if (!context) {
+    throw new Error('useTheme must be used within a ThemeProvider')
+  }
+  return context
+}
+
+export const ThemeProvider = ({ children }) => {
+  const [theme, setTheme] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetchTheme = async () => {
+    try {
+      const res = await fetch(`${API_URL}/theme/active`)
+      const data = await res.json()
+      if (data.success && data.theme) {
+        setTheme(data.theme)
+        applyTheme(data.theme.colors)
+      }
+    } catch (error) {
+      console.error('Error fetching theme:', error)
+    }
+    setLoading(false)
+  }
+
+  const applyTheme = (colors) => {
+    if (!colors) return
+    
+    const root = document.documentElement
+    
+    // Apply CSS custom properties
+    Object.entries(colors).forEach(([key, value]) => {
+      if (value) {
+        root.style.setProperty(`--theme-${key}`, value)
+      }
+    })
+
+    // Also set some commonly used Tailwind-compatible classes
+    root.style.setProperty('--color-primary', colors.primary || '#3B82F6')
+    root.style.setProperty('--color-secondary', colors.secondary || '#10B981')
+    root.style.setProperty('--color-accent', colors.accent || '#F59E0B')
+    root.style.setProperty('--color-bg-primary', colors.bgPrimary || '#000000')
+    root.style.setProperty('--color-bg-secondary', colors.bgSecondary || '#0D0D0D')
+    root.style.setProperty('--color-bg-card', colors.bgCard || '#1A1A1A')
+    root.style.setProperty('--color-text-primary', colors.textPrimary || '#FFFFFF')
+    root.style.setProperty('--color-text-secondary', colors.textSecondary || '#9CA3AF')
+    root.style.setProperty('--color-border', colors.border || '#374151')
+    root.style.setProperty('--color-success', colors.success || '#10B981')
+    root.style.setProperty('--color-error', colors.error || '#EF4444')
+    root.style.setProperty('--color-buy', colors.buyColor || '#3B82F6')
+    root.style.setProperty('--color-sell', colors.sellColor || '#EF4444')
+    root.style.setProperty('--color-profit', colors.profitColor || '#10B981')
+    root.style.setProperty('--color-loss', colors.lossColor || '#EF4444')
+  }
+
+  useEffect(() => {
+    fetchTheme()
+    
+    // Refresh theme every 30 seconds to catch admin changes
+    const interval = setInterval(fetchTheme, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const refreshTheme = () => {
+    fetchTheme()
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, loading, refreshTheme, applyTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+
+export default ThemeContext

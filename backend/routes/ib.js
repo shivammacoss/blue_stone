@@ -387,6 +387,74 @@ router.put('/admin/suspend/:id', async (req, res) => {
   }
 })
 
+// POST /api/ib/admin/transfer-referrals - Transfer users to a different IB
+router.post('/admin/transfer-referrals', async (req, res) => {
+  try {
+    const { userIds, targetIBId } = req.body
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'No users selected' })
+    }
+
+    if (!targetIBId) {
+      return res.status(400).json({ success: false, message: 'Target IB not specified' })
+    }
+
+    // Find the target IB user
+    const targetIB = await User.findById(targetIBId)
+    if (!targetIB) {
+      return res.status(404).json({ success: false, message: 'Target IB not found' })
+    }
+
+    // Verify target is an active IB
+    if (targetIB.ibStatus !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Target user is not an active IB' })
+    }
+
+    let transferredCount = 0
+
+    // Update each user's referredBy field
+    for (const userId of userIds) {
+      try {
+        // Update user's referredBy to point to new IB
+        await User.findByIdAndUpdate(userId, { 
+          referredBy: targetIBId,
+          referralCode: targetIB.referralCode
+        })
+
+        // Update or create IBReferral record
+        const existingReferral = await IBReferral.findOne({ userId })
+        if (existingReferral) {
+          existingReferral.ibUserId = targetIBId
+          existingReferral.referralCode = targetIB.referralCode
+          await existingReferral.save()
+        } else {
+          await IBReferral.create({
+            ibUserId: targetIBId,
+            userId,
+            referralCode: targetIB.referralCode
+          })
+        }
+
+        transferredCount++
+      } catch (err) {
+        console.error(`Error transferring user ${userId}:`, err)
+      }
+    }
+
+    console.log(`[Admin] Transferred ${transferredCount} users to IB ${targetIB.email}`)
+
+    res.json({ 
+      success: true, 
+      message: `Successfully transferred ${transferredCount} users`,
+      transferredCount
+    })
+  } catch (error) {
+    console.error('Error transferring referrals:', error)
+    res.status(500).json({ success: false, message: 'Error transferring referrals', error: error.message })
+  }
+})
+
 // GET /api/ib/admin/ibs - Get all IBs
 router.get('/admin/ibs', async (req, res) => {
   try {

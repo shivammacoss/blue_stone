@@ -9,13 +9,14 @@ router.get('/users', async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 })
     res.json({
+      success: true,
       message: 'Users fetched successfully',
       users,
       total: users.length
     })
   } catch (error) {
     console.error('Error fetching users:', error)
-    res.status(500).json({ message: 'Error fetching users', error: error.message })
+    res.status(500).json({ success: false, message: 'Error fetching users', error: error.message })
   }
 })
 
@@ -37,21 +38,21 @@ router.put('/users/:id/password', async (req, res) => {
   try {
     const { password } = req.body
     if (!password || password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' })
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' })
     }
     
     const user = await User.findById(req.params.id)
     if (!user) {
-      return res.status(404).json({ message: 'User not found' })
+      return res.status(404).json({ success: false, message: 'User not found' })
     }
     
     user.password = password
     await user.save()
     
-    res.json({ message: 'Password updated successfully' })
+    res.json({ success: true, message: 'Password updated successfully' })
   } catch (error) {
     console.error('Error updating password:', error)
-    res.status(500).json({ message: 'Error updating password', error: error.message })
+    res.status(500).json({ success: false, message: 'Error updating password', error: error.message })
   }
 })
 
@@ -60,28 +61,38 @@ router.post('/users/:id/deduct', async (req, res) => {
   try {
     const { amount, reason } = req.body
     if (!amount || amount <= 0) {
-      return res.status(400).json({ message: 'Invalid amount' })
+      return res.status(400).json({ success: false, message: 'Invalid amount' })
     }
     
     const user = await User.findById(req.params.id)
     if (!user) {
-      return res.status(404).json({ message: 'User not found' })
+      return res.status(404).json({ success: false, message: 'User not found' })
     }
     
-    if (user.walletBalance < amount) {
-      return res.status(400).json({ message: 'Insufficient balance' })
+    // Use Wallet model (same as user wallet page)
+    const Wallet = (await import('../models/Wallet.js')).default
+    let wallet = await Wallet.findOne({ userId: req.params.id })
+    if (!wallet) {
+      return res.status(400).json({ success: false, message: 'User has no wallet' })
     }
     
-    user.walletBalance -= amount
-    await user.save()
+    if ((wallet.balance || 0) < amount) {
+      return res.status(400).json({ success: false, message: 'Insufficient wallet balance' })
+    }
+    
+    wallet.balance = (wallet.balance || 0) - parseFloat(amount)
+    await wallet.save()
+    
+    console.log(`[Admin] Deducted $${amount} from user ${user.email} wallet. New balance: $${wallet.balance}`)
     
     res.json({ 
+      success: true,
       message: 'Funds deducted successfully',
-      newBalance: user.walletBalance
+      newBalance: wallet.balance
     })
   } catch (error) {
     console.error('Error deducting funds:', error)
-    res.status(500).json({ message: 'Error deducting funds', error: error.message })
+    res.status(500).json({ success: false, message: 'Error deducting funds', error: error.message })
   }
 })
 
@@ -90,24 +101,37 @@ router.post('/users/:id/add-fund', async (req, res) => {
   try {
     const { amount, reason } = req.body
     if (!amount || amount <= 0) {
-      return res.status(400).json({ message: 'Invalid amount' })
+      return res.status(400).json({ success: false, message: 'Invalid amount' })
     }
     
     const user = await User.findById(req.params.id)
     if (!user) {
-      return res.status(404).json({ message: 'User not found' })
+      return res.status(404).json({ success: false, message: 'User not found' })
     }
     
-    user.walletBalance = (user.walletBalance || 0) + parseFloat(amount)
-    await user.save()
+    // Use Wallet model (same as user wallet page)
+    const Wallet = (await import('../models/Wallet.js')).default
+    let wallet = await Wallet.findOne({ userId: req.params.id })
+    if (!wallet) {
+      wallet = new Wallet({ userId: req.params.id, balance: 0 })
+    }
+    
+    const previousBalance = wallet.balance || 0
+    wallet.balance = previousBalance + parseFloat(amount)
+    await wallet.save()
+    
+    console.log(`[Admin] Added $${amount} to user ${user.email} wallet. Balance: $${previousBalance} -> $${wallet.balance}`)
     
     res.json({ 
+      success: true,
       message: 'Funds added successfully',
-      newBalance: user.walletBalance
+      previousBalance,
+      newBalance: wallet.balance,
+      amountAdded: parseFloat(amount)
     })
   } catch (error) {
     console.error('Error adding funds:', error)
-    res.status(500).json({ message: 'Error adding funds', error: error.message })
+    res.status(500).json({ success: false, message: 'Error adding funds', error: error.message })
   }
 })
 
@@ -116,25 +140,58 @@ router.post('/trading-account/:id/add-fund', async (req, res) => {
   try {
     const { amount, reason } = req.body
     if (!amount || amount <= 0) {
-      return res.status(400).json({ message: 'Invalid amount' })
+      return res.status(400).json({ success: false, message: 'Invalid amount' })
     }
     
     const TradingAccount = (await import('../models/TradingAccount.js')).default
     const account = await TradingAccount.findById(req.params.id)
     if (!account) {
-      return res.status(404).json({ message: 'Trading account not found' })
+      return res.status(404).json({ success: false, message: 'Trading account not found' })
     }
     
     account.balance = (account.balance || 0) + parseFloat(amount)
     await account.save()
     
     res.json({ 
+      success: true,
       message: 'Funds added to trading account successfully',
       newBalance: account.balance
     })
   } catch (error) {
     console.error('Error adding funds to trading account:', error)
-    res.status(500).json({ message: 'Error adding funds', error: error.message })
+    res.status(500).json({ success: false, message: 'Error adding funds', error: error.message })
+  }
+})
+
+// POST /api/admin/trading-account/:id/deduct - Deduct funds from trading account (Admin only)
+router.post('/trading-account/:id/deduct', async (req, res) => {
+  try {
+    const { amount, reason } = req.body
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid amount' })
+    }
+    
+    const TradingAccount = (await import('../models/TradingAccount.js')).default
+    const account = await TradingAccount.findById(req.params.id)
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Trading account not found' })
+    }
+    
+    if ((account.balance || 0) < amount) {
+      return res.status(400).json({ success: false, message: 'Insufficient balance in trading account' })
+    }
+    
+    account.balance = (account.balance || 0) - parseFloat(amount)
+    await account.save()
+    
+    res.json({ 
+      success: true,
+      message: 'Funds deducted from trading account successfully',
+      newBalance: account.balance
+    })
+  } catch (error) {
+    console.error('Error deducting funds from trading account:', error)
+    res.status(500).json({ success: false, message: 'Error deducting funds', error: error.message })
   }
 })
 
@@ -145,7 +202,7 @@ router.put('/users/:id/block', async (req, res) => {
     
     const user = await User.findById(req.params.id)
     if (!user) {
-      return res.status(404).json({ message: 'User not found' })
+      return res.status(404).json({ success: false, message: 'User not found' })
     }
     
     user.isBlocked = blocked
@@ -153,12 +210,13 @@ router.put('/users/:id/block', async (req, res) => {
     await user.save()
     
     res.json({ 
+      success: true,
       message: blocked ? 'User blocked successfully' : 'User unblocked successfully',
       isBlocked: user.isBlocked
     })
   } catch (error) {
     console.error('Error updating user block status:', error)
-    res.status(500).json({ message: 'Error updating user status', error: error.message })
+    res.status(500).json({ success: false, message: 'Error updating user status', error: error.message })
   }
 })
 
@@ -169,7 +227,7 @@ router.put('/users/:id/ban', async (req, res) => {
     
     const user = await User.findById(req.params.id)
     if (!user) {
-      return res.status(404).json({ message: 'User not found' })
+      return res.status(404).json({ success: false, message: 'User not found' })
     }
     
     user.isBanned = banned
@@ -180,12 +238,13 @@ router.put('/users/:id/ban', async (req, res) => {
     await user.save()
     
     res.json({ 
+      success: true,
       message: banned ? 'User banned successfully' : 'User unbanned successfully',
       isBanned: user.isBanned
     })
   } catch (error) {
     console.error('Error updating user ban status:', error)
-    res.status(500).json({ message: 'Error updating user status', error: error.message })
+    res.status(500).json({ success: false, message: 'Error updating user status', error: error.message })
   }
 })
 
@@ -209,13 +268,13 @@ router.post('/trading-account/:id/add-credit', async (req, res) => {
   try {
     const { amount, reason, adminId } = req.body
     if (!amount || amount <= 0) {
-      return res.status(400).json({ message: 'Invalid amount' })
+      return res.status(400).json({ success: false, message: 'Invalid amount' })
     }
     
     const TradingAccount = (await import('../models/TradingAccount.js')).default
     const account = await TradingAccount.findById(req.params.id)
     if (!account) {
-      return res.status(404).json({ message: 'Trading account not found' })
+      return res.status(404).json({ success: false, message: 'Trading account not found' })
     }
     
     const previousCredit = account.credit || 0
@@ -241,6 +300,7 @@ router.post('/trading-account/:id/add-credit', async (req, res) => {
     }
     
     res.json({ 
+      success: true,
       message: 'Credit added successfully',
       previousCredit,
       newCredit: account.credit,
@@ -248,7 +308,7 @@ router.post('/trading-account/:id/add-credit', async (req, res) => {
     })
   } catch (error) {
     console.error('Error adding credit:', error)
-    res.status(500).json({ message: 'Error adding credit', error: error.message })
+    res.status(500).json({ success: false, message: 'Error adding credit', error: error.message })
   }
 })
 
@@ -390,6 +450,97 @@ router.post('/login-as-user/:userId', async (req, res) => {
   } catch (error) {
     console.error('Error logging in as user:', error)
     res.status(500).json({ message: 'Error logging in as user', error: error.message })
+  }
+})
+
+// ==================== PASSWORD RESET REQUESTS ====================
+
+// GET /api/admin/password-reset-requests - Get all password reset requests
+router.get('/password-reset-requests', async (req, res) => {
+  try {
+    const PasswordResetRequest = (await import('../models/PasswordResetRequest.js')).default
+    const { status } = req.query
+    
+    const filter = status ? { status } : {}
+    const requests = await PasswordResetRequest.find(filter)
+      .populate('userId', 'firstName lastName email phone')
+      .sort({ createdAt: -1 })
+    
+    // Get stats
+    const pendingCount = await PasswordResetRequest.countDocuments({ status: 'Pending' })
+    const completedCount = await PasswordResetRequest.countDocuments({ status: 'Completed' })
+    const rejectedCount = await PasswordResetRequest.countDocuments({ status: 'Rejected' })
+    
+    res.json({ 
+      success: true, 
+      requests,
+      stats: { pending: pendingCount, completed: completedCount, rejected: rejectedCount }
+    })
+  } catch (error) {
+    console.error('Error fetching password reset requests:', error)
+    res.status(500).json({ success: false, message: 'Error fetching requests', error: error.message })
+  }
+})
+
+// PUT /api/admin/password-reset-requests/:id/process - Process password reset request
+router.put('/password-reset-requests/:id/process', async (req, res) => {
+  try {
+    const { action, newPassword, adminRemarks } = req.body
+    const PasswordResetRequest = (await import('../models/PasswordResetRequest.js')).default
+    
+    const request = await PasswordResetRequest.findById(req.params.id).populate('userId')
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Request not found' })
+    }
+    
+    if (request.status !== 'Pending') {
+      return res.status(400).json({ success: false, message: 'Request already processed' })
+    }
+    
+    if (action === 'approve') {
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' })
+      }
+      
+      // Update user password
+      const user = await User.findById(request.userId._id)
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' })
+      }
+      
+      // Update email if requested
+      if (request.newEmail) {
+        user.email = request.newEmail
+      }
+      
+      user.password = newPassword
+      await user.save()
+      
+      request.status = 'Completed'
+      request.processedAt = new Date()
+      request.adminRemarks = adminRemarks || 'Password reset and sent to user email'
+      await request.save()
+      
+      console.log(`[Password Reset] Completed for user: ${user.email}`)
+      
+      res.json({ 
+        success: true, 
+        message: `Password reset for ${user.email}. New password: ${newPassword}`,
+        email: request.newEmail || request.email
+      })
+    } else if (action === 'reject') {
+      request.status = 'Rejected'
+      request.processedAt = new Date()
+      request.adminRemarks = adminRemarks || 'Request rejected'
+      await request.save()
+      
+      res.json({ success: true, message: 'Request rejected' })
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid action' })
+    }
+  } catch (error) {
+    console.error('Error processing password reset:', error)
+    res.status(500).json({ success: false, message: 'Error processing request', error: error.message })
   }
 })
 

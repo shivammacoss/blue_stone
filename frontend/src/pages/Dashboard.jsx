@@ -17,7 +17,9 @@ import {
   ExternalLink,
   RefreshCw,
   Activity,
-  Trophy
+  Trophy,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 
 const API_URL = 'http://localhost:5001/api'
@@ -32,10 +34,16 @@ const Dashboard = () => {
   const [eventsLoading, setEventsLoading] = useState(true)
   const [walletBalance, setWalletBalance] = useState(0)
   const [totalTrades, setTotalTrades] = useState(0)
+  const [totalCharges, setTotalCharges] = useState(0)
+  const [totalPnl, setTotalPnl] = useState(0)
   const [userAccounts, setUserAccounts] = useState([])
   const [challengeModeEnabled, setChallengeModeEnabled] = useState(false)
+  const [marketNews, setMarketNews] = useState([])
+  const [currentNewsIndex, setCurrentNewsIndex] = useState(0)
   const tradingViewRef = useRef(null)
   const economicCalendarRef = useRef(null)
+  const forexHeatmapRef = useRef(null)
+  const forexScreenerRef = useRef(null)
   
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -59,15 +67,48 @@ const Dashboard = () => {
     return () => window.removeEventListener('resize', handleResize)
   }, [navigate])
 
+  // Check auth status on mount
+  const checkAuthStatus = async () => {
+    const token = localStorage.getItem('token')
+    if (!token || !user._id) {
+      navigate('/user/login')
+      return
+    }
+    
+    try {
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await res.json()
+      
+      if (data.forceLogout || res.status === 403) {
+        alert(data.message || 'Session expired. Please login again.')
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        navigate('/user/login')
+        return
+      }
+    } catch (error) {
+      console.error('Auth check error:', error)
+    }
+  }
+
   // Fetch wallet balance and user data
   useEffect(() => {
+    checkAuthStatus()
     fetchChallengeStatus()
     if (user._id) {
       fetchWalletBalance()
       fetchUserAccounts()
-      fetchTrades()
     }
   }, [user._id])
+  
+  // Fetch trades after accounts are loaded
+  useEffect(() => {
+    if (userAccounts.length > 0) {
+      fetchTrades()
+    }
+  }, [userAccounts])
 
   const fetchChallengeStatus = async () => {
     try {
@@ -103,9 +144,35 @@ const Dashboard = () => {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(`${API_URL}/trades/user/${user._id}`)
-      const data = await res.json()
-      setTotalTrades(data.trades?.length || 0)
+      // Fetch trades for all user accounts
+      let allTrades = []
+      let charges = 0
+      let pnl = 0
+      
+      for (const account of userAccounts) {
+        // Fetch closed trades for history
+        const historyRes = await fetch(`${API_URL}/trade/history/${account._id}`)
+        const historyData = await historyRes.json()
+        if (historyData.success && historyData.trades) {
+          allTrades = [...allTrades, ...historyData.trades]
+          // Calculate charges (commission + swap)
+          historyData.trades.forEach(trade => {
+            charges += (trade.commission || 0) + (trade.swap || 0)
+            pnl += (trade.realizedPnl || 0)
+          })
+        }
+        
+        // Fetch open trades
+        const openRes = await fetch(`${API_URL}/trade/open/${account._id}`)
+        const openData = await openRes.json()
+        if (openData.success && openData.trades) {
+          allTrades = [...allTrades, ...openData.trades]
+        }
+      }
+      
+      setTotalTrades(allTrades.length)
+      setTotalCharges(Math.abs(charges))
+      setTotalPnl(pnl)
     } catch (error) {
       console.error('Error fetching trades:', error)
     }
@@ -167,6 +234,58 @@ const Dashboard = () => {
     setEconomicEvents(sampleEvents)
     setEventsLoading(false)
   }, [])
+
+  // Fetch market news from free API
+  useEffect(() => {
+    const fetchMarketNews = async () => {
+      try {
+        // Using NewsData.io free tier or fallback to sample data
+        const response = await fetch('https://newsdata.io/api/1/news?apikey=pub_63aboreal&q=forex%20OR%20currency%20OR%20trading&language=en&category=business')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.results && data.results.length > 0) {
+            setMarketNews(data.results.slice(0, 10))
+            return
+          }
+        }
+      } catch (error) {
+        console.log('Using fallback news data')
+      }
+      
+      // Fallback sample news with images
+      setMarketNews([
+        { title: 'EUR/USD Breaks Key Resistance Level', description: 'Euro surges against dollar amid ECB hawkish stance', image_url: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'Fed Signals Potential Rate Cuts in 2026', description: 'Federal Reserve hints at monetary policy shift', image_url: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'GBP/JPY Volatility Spikes on BOJ News', description: 'Bank of Japan policy decision creates market turbulence', image_url: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'Gold Prices Hit New Record High', description: 'Safe-haven demand drives precious metals rally', image_url: 'https://images.unsplash.com/photo-1610375461246-83df859d849d?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'Oil Markets React to OPEC+ Decision', description: 'Crude prices fluctuate on production cut news', image_url: 'https://images.unsplash.com/photo-1518186285589-2f7649de83e0?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'USD/CHF Tests Critical Support Zone', description: 'Swiss franc strengthens on risk-off sentiment', image_url: 'https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'AUD/USD Rallies on China Data', description: 'Australian dollar gains on positive trade figures', image_url: 'https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?w=400', pubDate: new Date().toISOString(), link: '#' },
+        { title: 'Crypto Markets Show Correlation with Forex', description: 'Bitcoin movements mirror dollar index trends', image_url: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400', pubDate: new Date().toISOString(), link: '#' },
+      ])
+    }
+    
+    fetchMarketNews()
+    const interval = setInterval(fetchMarketNews, 600000) // Refresh every 10 minutes
+    return () => clearInterval(interval)
+  }, [])
+
+  // Auto-slide news
+  useEffect(() => {
+    if (marketNews.length === 0) return
+    const interval = setInterval(() => {
+      setCurrentNewsIndex((prev) => (prev + 1) % marketNews.length)
+    }, 5000) // Change slide every 5 seconds
+    return () => clearInterval(interval)
+  }, [marketNews.length])
+
+  const nextNews = () => {
+    setCurrentNewsIndex((prev) => (prev + 1) % marketNews.length)
+  }
+
+  const prevNews = () => {
+    setCurrentNewsIndex((prev) => (prev - 1 + marketNews.length) % marketNews.length)
+  }
 
   const formatTimeAgo = (timestamp) => {
     const seconds = Math.floor((Date.now() - timestamp) / 1000)
@@ -239,6 +358,43 @@ const Dashboard = () => {
       })
       economicCalendarRef.current.appendChild(script)
     }
+
+    // TradingView Forex Heatmap Widget
+    if (forexHeatmapRef.current) {
+      forexHeatmapRef.current.innerHTML = ''
+      const script = document.createElement('script')
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-forex-heat-map.js'
+      script.async = true
+      script.innerHTML = JSON.stringify({
+        "width": "100%",
+        "height": "100%",
+        "currencies": ["EUR", "USD", "JPY", "GBP", "CHF", "AUD", "CAD", "NZD"],
+        "isTransparent": true,
+        "colorTheme": "dark",
+        "locale": "en"
+      })
+      forexHeatmapRef.current.appendChild(script)
+    }
+
+    // TradingView Forex Screener Widget
+    if (forexScreenerRef.current) {
+      forexScreenerRef.current.innerHTML = ''
+      const script = document.createElement('script')
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-screener.js'
+      script.async = true
+      script.innerHTML = JSON.stringify({
+        "width": "100%",
+        "height": "100%",
+        "defaultColumn": "overview",
+        "defaultScreen": "general",
+        "market": "forex",
+        "showToolbar": true,
+        "colorTheme": "dark",
+        "locale": "en",
+        "isTransparent": true
+      })
+      forexScreenerRef.current.appendChild(script)
+    }
   }, [])
 
   return (
@@ -290,6 +446,80 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
+        {/* Market News Slider - Top Banner */}
+        {marketNews.length > 0 && (
+          <div className="relative bg-gradient-to-r from-dark-800 via-dark-900 to-dark-800 border-b border-gray-800">
+            <div className="flex items-center">
+              {/* News Label */}
+              <div className="bg-red-500 px-4 py-3 flex items-center gap-2">
+                <Newspaper size={16} className="text-white" />
+                <span className="text-white font-bold text-sm uppercase">Breaking</span>
+              </div>
+              
+              {/* News Slider */}
+              <div className="flex-1 overflow-hidden relative">
+                <div 
+                  className="flex transition-transform duration-500 ease-in-out"
+                  style={{ transform: `translateX(-${currentNewsIndex * 100}%)` }}
+                >
+                  {marketNews.map((item, index) => (
+                    <a 
+                      key={index}
+                      href={item.link || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-full flex items-center gap-4 px-4 py-2 hover:bg-dark-700/50 transition-colors"
+                    >
+                      {item.image_url && (
+                        <img 
+                          src={item.image_url} 
+                          alt="" 
+                          className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+                          onError={(e) => e.target.style.display = 'none'}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm truncate">{item.title}</p>
+                        <p className="text-gray-400 text-xs truncate">{item.description}</p>
+                      </div>
+                      <ExternalLink size={14} className="text-gray-500 flex-shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Navigation Buttons */}
+              <div className="flex items-center gap-1 px-2">
+                <button 
+                  onClick={prevNews}
+                  className="p-1.5 hover:bg-dark-700 rounded transition-colors text-gray-400 hover:text-white"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button 
+                  onClick={nextNews}
+                  className="p-1.5 hover:bg-dark-700 rounded transition-colors text-gray-400 hover:text-white"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+
+              {/* Dots Indicator */}
+              <div className="flex items-center gap-1 px-3 border-l border-gray-700">
+                {marketNews.slice(0, 8).map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentNewsIndex(index)}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                      currentNewsIndex === index ? 'bg-accent-green' : 'bg-gray-600'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Simple Header */}
         <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
           <h1 className="text-xl font-semibold text-white">Dashboard</h1>
@@ -330,10 +560,10 @@ const Dashboard = () => {
                 <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
                   <DollarSign size={20} className="text-orange-500" />
                 </div>
-                <span className="text-red-500 text-xs font-medium">-2.4%</span>
+                <span className="text-gray-500 text-xs">Fees & Swap</span>
               </div>
               <p className="text-gray-500 text-sm mb-1">Total Charges</p>
-              <p className="text-white text-2xl font-bold">$1,892.50</p>
+              <p className="text-white text-2xl font-bold">${totalCharges.toFixed(2)}</p>
             </div>
 
             {/* Total PnL Box */}
@@ -342,10 +572,50 @@ const Dashboard = () => {
                 <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                   <Activity size={20} className="text-purple-500" />
                 </div>
-                <span className="text-accent-green text-xs font-medium">+15.3%</span>
+                <span className={`text-xs font-medium ${totalPnl >= 0 ? 'text-accent-green' : 'text-red-500'}`}>
+                  {totalPnl >= 0 ? '+' : ''}{totalPnl !== 0 ? ((totalPnl / (walletBalance || 1)) * 100).toFixed(1) + '%' : '0%'}
+                </span>
               </div>
               <p className="text-gray-500 text-sm mb-1">Total PnL</p>
-              <p className="text-white text-2xl font-bold text-accent-green">+$8,432.00</p>
+              <p className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-accent-green' : 'text-red-500'}`}>
+                {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          {/* Forex Heatmap */}
+          <div className="bg-dark-800 rounded-xl p-5 border border-gray-800 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                <Activity size={20} className="text-orange-500" />
+              </div>
+              <div>
+                <h2 className="text-white font-semibold">Forex Heatmap</h2>
+                <p className="text-gray-500 text-sm">Currency strength visualization</p>
+              </div>
+            </div>
+            <div className="h-80 overflow-hidden rounded-lg">
+              <div ref={forexHeatmapRef} className="tradingview-widget-container h-full">
+                <div className="tradingview-widget-container__widget h-full"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Forex Screener */}
+          <div className="bg-dark-800 rounded-xl p-5 border border-gray-800 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                <TrendingUp size={20} className="text-cyan-500" />
+              </div>
+              <div>
+                <h2 className="text-white font-semibold">Forex Screener</h2>
+                <p className="text-gray-500 text-sm">Real-time currency pair analysis</p>
+              </div>
+            </div>
+            <div className="h-96 overflow-hidden rounded-lg">
+              <div ref={forexScreenerRef} className="tradingview-widget-container h-full">
+                <div className="tradingview-widget-container__widget h-full"></div>
+              </div>
             </div>
           </div>
 

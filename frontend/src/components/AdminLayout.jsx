@@ -19,7 +19,8 @@ import {
   Menu,
   X,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Palette
 } from 'lucide-react'
 
 const AdminLayout = ({ children, title, subtitle }) => {
@@ -41,6 +42,7 @@ const AdminLayout = ({ children, title, subtitle }) => {
     { name: 'Copy Trade Management', icon: Copy, path: '/admin/copy-trade' },
     { name: 'Prop Firm Challenges', icon: Trophy, path: '/admin/prop-firm' },
     { name: 'Account Types', icon: CreditCard, path: '/admin/account-types' },
+    { name: 'Theme Settings', icon: Palette, path: '/admin/theme' },
     { name: 'Admin Management', icon: Shield, path: '/admin/admin-management' },
     { name: 'KYC Verification', icon: FileCheck, path: '/admin/kyc' },
     { name: 'Support Tickets', icon: HeadphonesIcon, path: '/admin/support' },

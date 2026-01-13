@@ -12,7 +12,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['Deposit', 'Withdrawal', 'Transfer_To_Account', 'Transfer_From_Account'],
+    enum: ['Deposit', 'Withdrawal', 'Transfer_To_Account', 'Transfer_From_Account', 'Account_Transfer_Out', 'Account_Transfer_In'],
     required: true
   },
   amount: {
@@ -31,6 +31,23 @@ const transactionSchema = new mongoose.Schema({
     ref: 'TradingAccount'
   },
   tradingAccountName: {
+    type: String,
+    default: ''
+  },
+  // For account-to-account transfers
+  toTradingAccountId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'TradingAccount'
+  },
+  toTradingAccountName: {
+    type: String,
+    default: ''
+  },
+  fromTradingAccountId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'TradingAccount'
+  },
+  fromTradingAccountName: {
     type: String,
     default: ''
   },

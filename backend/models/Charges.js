@@ -2,6 +2,7 @@ import mongoose from 'mongoose'
 
 const chargesSchema = new mongoose.Schema({
   // Hierarchy level - higher priority overrides lower
+  // Priority: USER > INSTRUMENT > SEGMENT > ACCOUNT_TYPE > GLOBAL
   level: {
     type: String,
     enum: ['USER', 'INSTRUMENT', 'SEGMENT', 'ACCOUNT_TYPE', 'GLOBAL'],
@@ -27,7 +28,12 @@ const chargesSchema = new mongoose.Schema({
     ref: 'AccountType',
     default: null
   },
-  // Spread settings
+  
+  // ============ SPREAD SETTINGS ============
+  // Spread is added to the price (BUY gets higher price, SELL gets lower price)
+  // For Forex: Value in PIPS (e.g., 1.5 = 1.5 pips = 0.00015 for EURUSD, 0.015 for USDJPY)
+  // For Metals: Value in cents (e.g., 50 = $0.50 for XAUUSD)
+  // For Crypto: Value in USD (e.g., 10 = $10 spread)
   spreadType: {
     type: String,
     enum: ['FIXED', 'PERCENTAGE'],
@@ -37,7 +43,9 @@ const chargesSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  // Commission settings
+  
+  // ============ COMMISSION SETTINGS ============
+  // Commission charged per lot on each execution (buy/sell/close)
   commissionType: {
     type: String,
     enum: ['PER_LOT', 'PER_TRADE', 'PERCENTAGE'],
@@ -47,7 +55,22 @@ const chargesSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  // Swap settings (overnight fees)
+  // When to charge commission
+  commissionOnBuy: {
+    type: Boolean,
+    default: true
+  },
+  commissionOnSell: {
+    type: Boolean,
+    default: true
+  },
+  commissionOnClose: {
+    type: Boolean,
+    default: false
+  },
+  
+  // ============ SWAP SETTINGS ============
+  // Overnight fees (charged daily at rollover time)
   swapLong: {
     type: Number,
     default: 0
@@ -61,6 +84,7 @@ const chargesSchema = new mongoose.Schema({
     enum: ['POINTS', 'PERCENTAGE'],
     default: 'POINTS'
   },
+  
   isActive: {
     type: Boolean,
     default: true

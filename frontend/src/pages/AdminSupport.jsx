@@ -76,8 +76,9 @@ const AdminSupport = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          senderId: adminUser._id || 'admin',
+          senderId: selectedTicket.userId?._id || selectedTicket.userId,
           senderType: 'ADMIN',
+          senderName: adminUser?.username || adminUser?.email || 'Support Team',
           message: replyMessage
         })
       })
@@ -86,9 +87,12 @@ const AdminSupport = () => {
         setSelectedTicket(data.ticket)
         setReplyMessage('')
         fetchTickets()
+      } else {
+        alert(data.message || 'Failed to send reply')
       }
     } catch (error) {
       console.error('Error sending reply:', error)
+      alert('Failed to send reply')
     }
     setSendingReply(false)
   }

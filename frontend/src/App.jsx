@@ -33,6 +33,10 @@ import BuyChallengePage from './pages/BuyChallengePage'
 import ChallengeDashboardPage from './pages/ChallengeDashboardPage'
 import AdminPropTrading from './pages/AdminPropTrading'
 import AdminEarnings from './pages/AdminEarnings'
+import ForgotPassword from './pages/ForgotPassword'
+import AdminThemeSettings from './pages/AdminThemeSettings'
+import BrandedLogin from './pages/BrandedLogin'
+import BrandedSignup from './pages/BrandedSignup'
 
 function App() {
   return (
@@ -41,6 +45,7 @@ function App() {
         <Route path="/" element={<Signup />} />
         <Route path="/user/signup" element={<Signup />} />
         <Route path="/user/login" element={<Login />} />
+        <Route path="/user/forgot-password" element={<ForgotPassword />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/mobile" element={<MobileTradingApp />} />
         <Route path="/account" element={<Account />} />
@@ -71,8 +76,11 @@ function App() {
         <Route path="/admin/support" element={<AdminSupport />} />
         <Route path="/admin/prop-trading" element={<AdminPropTrading />} />
         <Route path="/admin/earnings" element={<AdminEarnings />} />
+        <Route path="/admin/theme" element={<AdminThemeSettings />} />
         <Route path="/buy-challenge" element={<BuyChallengePage />} />
         <Route path="/challenge-dashboard" element={<ChallengeDashboardPage />} />
+        <Route path="/:slug/login" element={<BrandedLogin />} />
+        <Route path="/:slug/signup" element={<BrandedSignup />} />
       </Routes>
     </Router>
   )

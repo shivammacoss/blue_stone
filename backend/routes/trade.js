@@ -28,10 +28,28 @@ router.post('/open', async (req, res) => {
     } = req.body
 
     // Validate required fields
-    if (!userId || !tradingAccountId || !symbol || !side || !orderType || !quantity || !bid || !ask) {
+    if (!userId || !tradingAccountId || !symbol || !side || !orderType || !quantity) {
       return res.status(400).json({ 
         success: false, 
         message: 'Missing required fields' 
+      })
+    }
+
+    // Check if market data is available (bid/ask must be valid numbers > 0)
+    if (!bid || !ask || parseFloat(bid) <= 0 || parseFloat(ask) <= 0 || isNaN(parseFloat(bid)) || isNaN(parseFloat(ask))) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Market is closed or no price data available. Please try again when market is open.',
+        code: 'MARKET_CLOSED'
+      })
+    }
+
+    // Check for stale prices (if bid equals ask exactly, likely no real data)
+    if (parseFloat(bid) === parseFloat(ask) && parseFloat(bid) === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No live market data. Trading is not available at this time.',
+        code: 'NO_DATA_FEED'
       })
     }
 
@@ -153,10 +171,19 @@ router.post('/close', async (req, res) => {
   try {
     const { tradeId, bid, ask } = req.body
 
-    if (!tradeId || !bid || !ask) {
+    if (!tradeId) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Missing required fields' 
+        message: 'Trade ID is required' 
+      })
+    }
+
+    // Check if market data is available
+    if (!bid || !ask || parseFloat(bid) <= 0 || parseFloat(ask) <= 0 || isNaN(parseFloat(bid)) || isNaN(parseFloat(ask))) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Market is closed or no price data available. Cannot close trade.',
+        code: 'MARKET_CLOSED'
       })
     }
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import metaApiService from '../services/metaApi'
 import binanceApiService from '../services/binanceApi'
+import priceStreamService from '../services/priceStream'
 
 const API_URL = 'http://localhost:5001/api'
 
@@ -53,6 +54,8 @@ const AdminTradeManagement = () => {
   })
   const [marketPrices, setMarketPrices] = useState({})
   const [loadingPrices, setLoadingPrices] = useState(false)
+  const [closeFormPrice, setCloseFormPrice] = useState(0)
+  const [livePrices, setLivePrices] = useState({})
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -63,6 +66,100 @@ const AdminTradeManagement = () => {
     fetchTrades()
     fetchUsers()
   }, [filterStatus, currentPage])
+
+  // Fetch live prices for open trades via WebSocket for institutional-grade streaming
+  useEffect(() => {
+    const unsubscribe = priceStreamService.subscribe('adminTradeManagement', (prices, updated, timestamp) => {
+      // Only update if we have valid prices (prevent flickering to zero)
+      if (!prices || Object.keys(prices).length === 0) return
+      
+      // Merge prices to prevent losing existing data
+      setLivePrices(prev => {
+        const merged = { ...prev }
+        Object.entries(prices).forEach(([symbol, price]) => {
+          if (price && price.bid) {
+            merged[symbol] = price
+          }
+        })
+        return merged
+      })
+    })
+    
+    return () => unsubscribe()
+  }, [])
+
+  // Fallback: Fetch prices via API if WebSocket prices are empty
+  useEffect(() => {
+    const fetchPricesForTrades = async () => {
+      const openTrades = trades.filter(t => t.status === 'OPEN')
+      if (openTrades.length === 0) return
+      
+      // Get unique symbols from open trades
+      const symbols = [...new Set(openTrades.map(t => t.symbol))]
+      
+      // Check if we already have prices for all symbols
+      const missingSymbols = symbols.filter(s => !livePrices[s]?.bid)
+      if (missingSymbols.length === 0) return
+      
+      try {
+        const res = await fetch(`${API_URL}/prices/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols })
+        })
+        const data = await res.json()
+        if (data.success && data.prices) {
+          setLivePrices(prev => {
+            const merged = { ...prev }
+            Object.entries(data.prices).forEach(([symbol, price]) => {
+              if (price && price.bid) {
+                merged[symbol] = price
+              }
+            })
+            return merged
+          })
+        }
+      } catch (e) {
+        console.error('Error fetching prices:', e)
+      }
+    }
+    
+    // Fetch immediately and then every 3 seconds
+    fetchPricesForTrades()
+    const interval = setInterval(fetchPricesForTrades, 3000)
+    return () => clearInterval(interval)
+  }, [trades])
+
+  // Calculate floating PnL for open trades - matching user's TradingPage calculation
+  const calculateFloatingPnl = (trade) => {
+    if (trade.status !== 'OPEN') return trade.realizedPnl || 0
+    const prices = livePrices[trade.symbol]
+    if (!prices || !prices.bid) return trade._lastPnl || 0
+    
+    const currentPrice = trade.side === 'BUY' ? prices.bid : prices.ask
+    if (!currentPrice || currentPrice <= 0) return trade._lastPnl || 0
+    
+    // Use actual contract size from trade (same as user sees)
+    // XAUUSD = 100, XAGUSD = 5000, Crypto = 1, Forex = 100000
+    const contractSize = trade.contractSize || getDefaultContractSize(trade.symbol)
+    
+    const pnl = trade.side === 'BUY'
+      ? (currentPrice - trade.openPrice) * trade.quantity * contractSize
+      : (trade.openPrice - currentPrice) * trade.quantity * contractSize
+    
+    // Subtract commission and swap like user's page does
+    const finalPnl = pnl - (trade.commission || 0) - (trade.swap || 0)
+    trade._lastPnl = finalPnl
+    return finalPnl
+  }
+
+  // Get default contract size based on symbol (matches backend tradeEngine)
+  const getDefaultContractSize = (symbol) => {
+    if (symbol === 'XAUUSD') return 100
+    if (symbol === 'XAGUSD') return 5000
+    if (['BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD', 'BCHUSD', 'BNBUSD', 'SOLUSD', 'ADAUSD', 'DOGEUSD', 'DOTUSD', 'MATICUSD', 'AVAXUSD', 'LINKUSD'].includes(symbol)) return 1
+    return 100000 // Forex default
+  }
 
   const fetchUsers = async () => {
     try {
@@ -182,12 +279,13 @@ const AdminTradeManagement = () => {
       const res = await fetch(`${API_URL}/admin/trade/close/${selectedTrade._id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ closePrice: selectedTrade.openPrice })
+        body: JSON.stringify({ closePrice: closeFormPrice || selectedTrade.openPrice })
       })
       const data = await res.json()
       if (data.success) {
-        alert(`Trade closed! P&L: $${data.realizedPnl?.toFixed(2)}`)
+        alert(`Trade closed by Admin! P&L: $${data.realizedPnl?.toFixed(2)}`)
         setShowCloseModal(false)
+        setCloseFormPrice(0)
         fetchTrades()
       } else {
         alert(data.message || 'Failed to close trade')
@@ -210,9 +308,26 @@ const AdminTradeManagement = () => {
     setShowEditModal(true)
   }
 
-  const openCloseModal = (trade) => {
+  const openCloseModal = async (trade) => {
     setSelectedTrade(trade)
     setShowCloseModal(true)
+    // Fetch current market price for closing
+    try {
+      const cryptoSymbols = ['BTCUSD', 'ETHUSD', 'BTCUSDT', 'ETHUSDT']
+      let priceData = null
+      if (cryptoSymbols.includes(trade.symbol)) {
+        const prices = await binanceApiService.getAllPrices([trade.symbol])
+        priceData = prices[trade.symbol]
+      } else {
+        priceData = await metaApiService.getSymbolPrice(trade.symbol)
+      }
+      if (priceData) {
+        const closePrice = trade.side === 'BUY' ? priceData.bid : priceData.ask
+        setCloseFormPrice(closePrice)
+      }
+    } catch (e) {
+      console.error('Error fetching close price:', e)
+    }
   }
 
   // Calculate PnL when admin changes prices
@@ -359,31 +474,52 @@ const AdminTradeManagement = () => {
                       }`}>
                         {trade.side}
                       </span>
+                      {trade.closedBy === 'ADMIN' && (
+                        <span className="px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-500">Admin Close</span>
+                      )}
                     </div>
                     <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${getStatusColor(trade.status)}`}>
                       {getStatusIcon(trade.status)}
                       {trade.status}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                     <div>
                       <p className="text-gray-500">User</p>
-                      <p className="text-white">{trade.userId?.firstName || trade.userId?.email}</p>
+                      <p className="text-white truncate">{trade.userId?.firstName || trade.userId?.email}</p>
+                      <p className="text-gray-500 text-xs font-mono truncate">ID: {trade.userId?._id || 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-gray-500">Lots</p>
                       <p className="text-white">{trade.quantity}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Leverage</p>
-                      <p className="text-white">1:{trade.leverage}</p>
+                      <p className="text-gray-500">Open Price</p>
+                      <p className="text-white">${trade.openPrice?.toFixed(5)}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">P&L</p>
-                      <p className={(trade.realizedPnl || 0) >= 0 ? 'text-green-500' : 'text-red-500'}>
-                        {(trade.realizedPnl || 0) >= 0 ? '+' : ''}${(trade.realizedPnl || 0).toFixed(2)}
+                      <p className="text-gray-500">Live P&L</p>
+                      <p className={`font-semibold ${calculateFloatingPnl(trade) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {calculateFloatingPnl(trade) >= 0 ? '+' : ''}${calculateFloatingPnl(trade).toFixed(2)}
                       </p>
                     </div>
+                  </div>
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 pt-3 border-t border-gray-600">
+                    <button
+                      onClick={() => openEditModal(trade)}
+                      className="flex-1 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
+                    >
+                      <Edit size={14} /> Edit
+                    </button>
+                    {trade.status === 'OPEN' && (
+                      <button
+                        onClick={() => openCloseModal(trade)}
+                        className="flex-1 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
+                      >
+                        <XCircle size={14} /> Close
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -409,7 +545,10 @@ const AdminTradeManagement = () => {
                   {filteredTrades.map((trade) => (
                     <tr key={trade._id} className="border-b border-gray-800 hover:bg-dark-700/50">
                       <td className="py-4 px-4 text-white font-mono text-sm">{trade.tradeId}</td>
-                      <td className="py-4 px-4 text-white">{trade.userId?.firstName || trade.userId?.email}</td>
+                      <td className="py-4 px-4">
+                        <p className="text-white">{trade.userId?.firstName || trade.userId?.email}</p>
+                        <p className="text-gray-500 text-xs font-mono">{trade.userId?._id || 'N/A'}</p>
+                      </td>
                       <td className="py-4 px-4 text-white font-medium">{trade.symbol}</td>
                       <td className="py-4 px-4">
                         <span className={`flex items-center gap-1 ${trade.side === 'BUY' ? 'text-green-500' : 'text-red-500'}`}>
@@ -419,14 +558,19 @@ const AdminTradeManagement = () => {
                       </td>
                       <td className="py-4 px-4 text-white">{trade.quantity}</td>
                       <td className="py-4 px-4 text-gray-400">${trade.openPrice?.toFixed(5)}</td>
-                      <td className={`py-4 px-4 font-medium ${(trade.realizedPnl || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {(trade.realizedPnl || 0) >= 0 ? '+' : ''}${(trade.realizedPnl || 0).toFixed(2)}
+                      <td className={`py-4 px-4 font-medium ${calculateFloatingPnl(trade) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {calculateFloatingPnl(trade) >= 0 ? '+' : ''}${calculateFloatingPnl(trade).toFixed(2)}
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs w-fit ${getStatusColor(trade.status)}`}>
-                          {getStatusIcon(trade.status)}
-                          {trade.status}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs w-fit ${getStatusColor(trade.status)}`}>
+                            {getStatusIcon(trade.status)}
+                            {trade.status}
+                          </span>
+                          {trade.closedBy === 'ADMIN' && (
+                            <span className="text-xs text-yellow-500">Admin Close</span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-1">
@@ -703,6 +847,7 @@ const AdminTradeManagement = () => {
                   </span>
                 </div>
                 <p className="text-gray-400 text-sm mt-1">User: {selectedTrade.userId?.firstName || selectedTrade.userId?.email}</p>
+                <p className="text-gray-500 text-xs font-mono">User ID: {selectedTrade.userId?._id || 'N/A'}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -770,26 +915,39 @@ const AdminTradeManagement = () => {
                   </div>
                   <div>
                     <label className="block text-gray-400 text-sm mb-1">Realized P&L</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={editForm.realizedPnl}
-                        onChange={(e) => setEditForm({ ...editForm, realizedPnl: e.target.value })}
-                        className={`flex-1 px-3 py-2 bg-dark-700 border border-gray-700 rounded-lg ${
-                          parseFloat(editForm.realizedPnl) >= 0 ? 'text-green-500' : 'text-red-500'
-                        }`}
-                      />
-                      <button
-                        onClick={calculatePnL}
-                        className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
-                        title="Auto-calculate P&L"
-                      >
-                        Calc
-                      </button>
-                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.realizedPnl}
+                      onChange={(e) => setEditForm({ ...editForm, realizedPnl: e.target.value })}
+                      className={`w-full px-3 py-2 bg-dark-700 border border-gray-700 rounded-lg ${
+                        parseFloat(editForm.realizedPnl) >= 0 ? 'text-green-500' : 'text-red-500'
+                      }`}
+                    />
                   </div>
                 </div>
+                {/* Calculate Button - moved below for better UX */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedTrade || !editForm.closePrice) {
+                      alert('Please enter a close price first')
+                      return
+                    }
+                    // Use actual contract size from trade (matches user's view)
+                    const contractSize = selectedTrade.contractSize || getDefaultContractSize(selectedTrade.symbol)
+                    const pnl = selectedTrade.side === 'BUY'
+                      ? (parseFloat(editForm.closePrice) - parseFloat(editForm.openPrice)) * parseFloat(editForm.quantity) * contractSize
+                      : (parseFloat(editForm.openPrice) - parseFloat(editForm.closePrice)) * parseFloat(editForm.quantity) * contractSize
+                    // Subtract commission and swap
+                    const finalPnl = pnl - (selectedTrade.commission || 0) - (selectedTrade.swap || 0)
+                    setEditForm(prev => ({ ...prev, realizedPnl: Math.round(finalPnl * 100) / 100 }))
+                  }}
+                  className="w-full mt-3 px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <RefreshCw size={16} />
+                  Calculate P&L from Close Price
+                </button>
               </div>
 
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
@@ -832,12 +990,39 @@ const AdminTradeManagement = () => {
                 <p className="text-white">{selectedTrade.symbol} {selectedTrade.side} {selectedTrade.quantity} lots</p>
                 <p className="text-gray-400">Open Price: ${selectedTrade.openPrice}</p>
               </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">Close Price (Current Market)</label>
+                <input
+                  type="number"
+                  step="0.00001"
+                  value={closeFormPrice}
+                  onChange={(e) => setCloseFormPrice(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-2 text-white"
+                />
+              </div>
+              {closeFormPrice > 0 && (
+                <div className="bg-dark-700 rounded-lg p-3">
+                  <p className="text-gray-400 text-sm">Estimated P&L:</p>
+                  {(() => {
+                    const contractSize = selectedTrade.contractSize || getDefaultContractSize(selectedTrade.symbol)
+                    const rawPnl = selectedTrade.side === 'BUY' 
+                      ? (closeFormPrice - selectedTrade.openPrice) * selectedTrade.quantity * contractSize
+                      : (selectedTrade.openPrice - closeFormPrice) * selectedTrade.quantity * contractSize
+                    const finalPnl = rawPnl - (selectedTrade.commission || 0) - (selectedTrade.swap || 0)
+                    return (
+                      <p className={`text-lg font-bold ${finalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        ${finalPnl.toFixed(2)}
+                      </p>
+                    )
+                  })()}
+                </div>
+              )}
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-                <p className="text-yellow-500 text-sm">Are you sure you want to close this trade? This action cannot be undone.</p>
+                <p className="text-yellow-500 text-sm">This will close the trade as "Admin Close". The user will see this in their trade history.</p>
               </div>
               <div className="flex gap-3 pt-4">
                 <button
-                  onClick={() => setShowCloseModal(false)}
+                  onClick={() => { setShowCloseModal(false); setCloseFormPrice(0); }}
                   className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 text-white rounded-lg"
                 >
                   Cancel

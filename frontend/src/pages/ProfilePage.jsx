@@ -3,18 +3,45 @@ import { useNavigate } from 'react-router-dom'
 import { 
   LayoutDashboard, User, Wallet, Users, Copy, UserCircle, HelpCircle, FileText, LogOut,
   Mail, Phone, MapPin, Calendar, Shield, Edit2, Save, X, Camera, Building2, Smartphone, CreditCard, Trophy,
-  ArrowLeft, Home
+  ArrowLeft, Home, Upload, CheckCircle, Clock, XCircle, FileCheck
 } from 'lucide-react'
 
 const API_URL = 'http://localhost:5001/api'
 
 const ProfilePage = () => {
   const navigate = useNavigate()
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [challengeModeEnabled, setChallengeModeEnabled] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  
+  // KYC State
+  const [kycStatus, setKycStatus] = useState(null)
+  const [kycLoading, setKycLoading] = useState(false)
+  const [showKycForm, setShowKycForm] = useState(false)
+  const [kycForm, setKycForm] = useState({
+    documentType: 'aadhaar',
+    documentNumber: '',
+    frontImage: '',
+    backImage: '',
+    selfieImage: ''
+  })
+
+  // Bank Account State
+  const [userBankAccounts, setUserBankAccounts] = useState([])
+  const [showBankForm, setShowBankForm] = useState(false)
+  const [bankFormType, setBankFormType] = useState('Bank Transfer')
+  const [bankForm, setBankForm] = useState({
+    bankName: '',
+    accountNumber: '',
+    accountHolderName: '',
+    ifscCode: '',
+    branchName: '',
+    upiId: ''
+  })
+  const [bankLoading, setBankLoading] = useState(false)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -24,7 +51,143 @@ const ProfilePage = () => {
 
   useEffect(() => {
     fetchChallengeStatus()
+    fetchKycStatus()
+    fetchUserBankAccounts()
   }, [])
+
+  // Fetch user's bank accounts
+  const fetchUserBankAccounts = async () => {
+    try {
+      const res = await fetch(`${API_URL}/payment-methods/user-banks/${storedUser._id}`)
+      const data = await res.json()
+      setUserBankAccounts(data.accounts || [])
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error)
+    }
+  }
+
+  // Submit bank account for approval
+  const handleBankSubmit = async () => {
+    if (bankFormType === 'Bank Transfer') {
+      if (!bankForm.bankName || !bankForm.accountNumber || !bankForm.accountHolderName || !bankForm.ifscCode) {
+        alert('Please fill all required bank details')
+        return
+      }
+    } else {
+      if (!bankForm.upiId) {
+        alert('Please enter UPI ID')
+        return
+      }
+    }
+
+    setBankLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/payment-methods/user-banks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: storedUser._id,
+          type: bankFormType,
+          ...bankForm
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert('Bank account submitted for approval!')
+        setShowBankForm(false)
+        setBankForm({
+          bankName: '',
+          accountNumber: '',
+          accountHolderName: '',
+          ifscCode: '',
+          branchName: '',
+          upiId: ''
+        })
+        fetchUserBankAccounts()
+      } else {
+        alert(data.message || 'Failed to submit bank account')
+      }
+    } catch (error) {
+      console.error('Error submitting bank account:', error)
+      alert('Failed to submit bank account')
+    }
+    setBankLoading(false)
+  }
+
+  // Delete bank account
+  const handleDeleteBankAccount = async (id) => {
+    if (!confirm('Are you sure you want to delete this bank account?')) return
+    try {
+      const res = await fetch(`${API_URL}/payment-methods/user-banks/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        fetchUserBankAccounts()
+      }
+    } catch (error) {
+      console.error('Error deleting bank account:', error)
+    }
+  }
+  
+  // Fetch KYC status
+  const fetchKycStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/kyc/status/${storedUser._id}`)
+      const data = await res.json()
+      if (data.success && data.hasKYC) {
+        setKycStatus(data.kyc)
+      }
+    } catch (error) {
+      console.error('Error fetching KYC status:', error)
+    }
+  }
+  
+  // Handle file to base64 conversion
+  const handleFileChange = (e, field) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size should be less than 5MB')
+        return
+      }
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setKycForm(prev => ({ ...prev, [field]: reader.result }))
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+  
+  // Submit KYC
+  const handleKycSubmit = async () => {
+    if (!kycForm.documentNumber || !kycForm.frontImage) {
+      alert('Please fill document number and upload front image')
+      return
+    }
+    
+    setKycLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/kyc/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: storedUser._id,
+          ...kycForm
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert('KYC submitted successfully! Please wait for approval.')
+        setShowKycForm(false)
+        fetchKycStatus()
+      } else {
+        alert(data.message || 'Failed to submit KYC')
+      }
+    } catch (error) {
+      console.error('Error submitting KYC:', error)
+      alert('Failed to submit KYC')
+    }
+    setKycLoading(false)
+  }
 
   const fetchChallengeStatus = async () => {
     try {
@@ -38,7 +201,6 @@ const ProfilePage = () => {
     }
   }
   
-  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const [profile, setProfile] = useState({
     firstName: storedUser.firstName || '',
     lastName: storedUser.lastName || '',
@@ -451,6 +613,411 @@ const ProfilePage = () => {
                   <p className="text-yellow-500 text-sm">
                     ⚠️ Please add your bank details or UPI ID to receive withdrawals. Click "Edit Profile" to add.
                   </p>
+                </div>
+              )}
+            </div>
+
+            {/* Withdrawal Accounts Section */}
+            <div className="bg-dark-800 rounded-xl p-6 border border-gray-800 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-semibold flex items-center gap-2">
+                  <CreditCard size={18} /> Withdrawal Accounts
+                </h3>
+                <button
+                  onClick={() => setShowBankForm(true)}
+                  className="px-3 py-1.5 bg-green-500/20 text-green-500 rounded-lg text-sm hover:bg-green-500/30"
+                >
+                  + Add Account
+                </button>
+              </div>
+
+              <p className="text-gray-500 text-sm mb-4">
+                Add bank accounts or UPI IDs for withdrawals. Accounts require admin approval before use.
+              </p>
+
+              {userBankAccounts.length === 0 ? (
+                <div className="p-4 bg-dark-700 rounded-lg text-center">
+                  <p className="text-gray-500">No withdrawal accounts added yet</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {userBankAccounts.map((acc) => (
+                    <div key={acc._id} className="p-4 bg-dark-700 rounded-lg border border-gray-700">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          {acc.type === 'Bank Transfer' ? (
+                            <Building2 size={20} className="text-blue-500" />
+                          ) : (
+                            <Smartphone size={20} className="text-purple-500" />
+                          )}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-medium">
+                                {acc.type === 'Bank Transfer' ? acc.bankName : 'UPI'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-xs ${
+                                acc.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-500' :
+                                acc.status === 'Approved' ? 'bg-green-500/20 text-green-500' :
+                                'bg-red-500/20 text-red-500'
+                              }`}>
+                                {acc.status}
+                              </span>
+                            </div>
+                            {acc.type === 'Bank Transfer' ? (
+                              <p className="text-gray-500 text-sm">
+                                A/C: {acc.accountNumber} | IFSC: {acc.ifscCode}
+                              </p>
+                            ) : (
+                              <p className="text-purple-400 text-sm font-mono">{acc.upiId}</p>
+                            )}
+                            {acc.rejectionReason && (
+                              <p className="text-red-400 text-xs mt-1">Reason: {acc.rejectionReason}</p>
+                            )}
+                          </div>
+                        </div>
+                        {acc.status !== 'Approved' && (
+                          <button
+                            onClick={() => handleDeleteBankAccount(acc._id)}
+                            className="text-gray-500 hover:text-red-500"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Bank Account Form Modal */}
+            {showBankForm && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-dark-800 rounded-xl w-full max-w-md border border-gray-700">
+                  <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+                    <h3 className="text-white font-semibold">Add Withdrawal Account</h3>
+                    <button onClick={() => setShowBankForm(false)} className="text-gray-400 hover:text-white">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    {/* Type Selection */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setBankFormType('Bank Transfer')}
+                        className={`p-3 rounded-lg border flex items-center justify-center gap-2 ${
+                          bankFormType === 'Bank Transfer'
+                            ? 'border-blue-500 bg-blue-500/20 text-blue-500'
+                            : 'border-gray-700 text-gray-400'
+                        }`}
+                      >
+                        <Building2 size={18} /> Bank
+                      </button>
+                      <button
+                        onClick={() => setBankFormType('UPI')}
+                        className={`p-3 rounded-lg border flex items-center justify-center gap-2 ${
+                          bankFormType === 'UPI'
+                            ? 'border-purple-500 bg-purple-500/20 text-purple-500'
+                            : 'border-gray-700 text-gray-400'
+                        }`}
+                      >
+                        <Smartphone size={18} /> UPI
+                      </button>
+                    </div>
+
+                    {bankFormType === 'Bank Transfer' ? (
+                      <>
+                        <div>
+                          <label className="text-gray-400 text-sm block mb-1">Bank Name *</label>
+                          <input
+                            type="text"
+                            value={bankForm.bankName}
+                            onChange={(e) => setBankForm({...bankForm, bankName: e.target.value})}
+                            placeholder="e.g., HDFC Bank"
+                            className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-gray-400 text-sm block mb-1">Account Number *</label>
+                          <input
+                            type="text"
+                            value={bankForm.accountNumber}
+                            onChange={(e) => setBankForm({...bankForm, accountNumber: e.target.value})}
+                            placeholder="e.g., 1234567890"
+                            className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-gray-400 text-sm block mb-1">Account Holder Name *</label>
+                          <input
+                            type="text"
+                            value={bankForm.accountHolderName}
+                            onChange={(e) => setBankForm({...bankForm, accountHolderName: e.target.value})}
+                            placeholder="e.g., John Doe"
+                            className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-gray-400 text-sm block mb-1">IFSC Code *</label>
+                          <input
+                            type="text"
+                            value={bankForm.ifscCode}
+                            onChange={(e) => setBankForm({...bankForm, ifscCode: e.target.value.toUpperCase()})}
+                            placeholder="e.g., HDFC0001234"
+                            className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white uppercase"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-gray-400 text-sm block mb-1">Branch Name</label>
+                          <input
+                            type="text"
+                            value={bankForm.branchName}
+                            onChange={(e) => setBankForm({...bankForm, branchName: e.target.value})}
+                            placeholder="e.g., Mumbai Main"
+                            className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <label className="text-gray-400 text-sm block mb-1">UPI ID *</label>
+                        <input
+                          type="text"
+                          value={bankForm.upiId}
+                          onChange={(e) => setBankForm({...bankForm, upiId: e.target.value})}
+                          placeholder="e.g., yourname@upi"
+                          className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                        />
+                      </div>
+                    )}
+
+                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                      <p className="text-yellow-500 text-xs">
+                        ⚠️ Your account will be reviewed by admin before it can be used for withdrawals.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowBankForm(false)}
+                        className="flex-1 py-2 bg-dark-700 text-gray-400 rounded-lg hover:bg-dark-600"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleBankSubmit}
+                        disabled={bankLoading}
+                        className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+                      >
+                        {bankLoading ? 'Submitting...' : 'Submit for Approval'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* KYC Verification Section */}
+            <div className="bg-dark-800 rounded-xl p-6 border border-gray-800 mt-6">
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                <FileCheck size={18} /> KYC Verification
+              </h3>
+              
+              {/* KYC Status Display */}
+              {kycStatus ? (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-lg border ${
+                    kycStatus.status === 'approved' 
+                      ? 'bg-green-500/10 border-green-500/30' 
+                      : kycStatus.status === 'pending'
+                        ? 'bg-yellow-500/10 border-yellow-500/30'
+                        : 'bg-red-500/10 border-red-500/30'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      {kycStatus.status === 'approved' && <CheckCircle size={24} className="text-green-500" />}
+                      {kycStatus.status === 'pending' && <Clock size={24} className="text-yellow-500" />}
+                      {kycStatus.status === 'rejected' && <XCircle size={24} className="text-red-500" />}
+                      <div>
+                        <p className={`font-medium ${
+                          kycStatus.status === 'approved' ? 'text-green-500' 
+                            : kycStatus.status === 'pending' ? 'text-yellow-500' 
+                            : 'text-red-500'
+                        }`}>
+                          {kycStatus.status === 'approved' && 'KYC Verified'}
+                          {kycStatus.status === 'pending' && 'KYC Under Review'}
+                          {kycStatus.status === 'rejected' && 'KYC Rejected'}
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          Document: {kycStatus.documentType?.replace('_', ' ').toUpperCase()}
+                        </p>
+                        {kycStatus.status === 'rejected' && kycStatus.rejectionReason && (
+                          <p className="text-red-400 text-sm mt-1">Reason: {kycStatus.rejectionReason}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {kycStatus.status === 'rejected' && (
+                    <button
+                      onClick={() => {
+                        setKycForm({ documentType: 'aadhaar', documentNumber: '', frontImage: '', backImage: '', selfieImage: '' })
+                        setShowKycForm(true)
+                      }}
+                      className="w-full py-3 bg-accent-green text-black font-medium rounded-lg hover:bg-accent-green/90"
+                    >
+                      Resubmit KYC
+                    </button>
+                  )}
+                </div>
+              ) : showKycForm ? (
+                <div className="space-y-4">
+                  {/* Document Type */}
+                  <div>
+                    <label className="text-gray-400 text-sm mb-2 block">Document Type</label>
+                    <select
+                      value={kycForm.documentType}
+                      onChange={(e) => setKycForm({ ...kycForm, documentType: e.target.value })}
+                      className="w-full bg-dark-700 border border-gray-600 rounded-lg px-4 py-3 text-white"
+                    >
+                      <option value="aadhaar">Aadhaar Card</option>
+                      <option value="pan_card">PAN Card</option>
+                      <option value="passport">Passport</option>
+                      <option value="driving_license">Driving License</option>
+                      <option value="voter_id">Voter ID</option>
+                      <option value="national_id">National ID</option>
+                    </select>
+                  </div>
+                  
+                  {/* Document Number */}
+                  <div>
+                    <label className="text-gray-400 text-sm mb-2 block">Document Number</label>
+                    <input
+                      type="text"
+                      value={kycForm.documentNumber}
+                      onChange={(e) => setKycForm({ ...kycForm, documentNumber: e.target.value })}
+                      placeholder="Enter document number"
+                      className="w-full bg-dark-700 border border-gray-600 rounded-lg px-4 py-3 text-white"
+                    />
+                  </div>
+                  
+                  {/* Front Image Upload */}
+                  <div>
+                    <label className="text-gray-400 text-sm mb-2 block">Front Side of Document *</label>
+                    <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-accent-green transition-colors">
+                      {kycForm.frontImage ? (
+                        <div className="relative">
+                          <img src={kycForm.frontImage} alt="Front" className="max-h-32 mx-auto rounded" />
+                          <button
+                            onClick={() => setKycForm({ ...kycForm, frontImage: '' })}
+                            className="absolute top-0 right-0 p-1 bg-red-500 rounded-full"
+                          >
+                            <X size={14} className="text-white" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer">
+                          <Upload size={32} className="mx-auto text-gray-500 mb-2" />
+                          <p className="text-gray-400 text-sm">Click to upload front side</p>
+                          <p className="text-gray-500 text-xs">Max 5MB, JPG/PNG</p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleFileChange(e, 'frontImage')}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Back Image Upload */}
+                  <div>
+                    <label className="text-gray-400 text-sm mb-2 block">Back Side of Document (Optional)</label>
+                    <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-accent-green transition-colors">
+                      {kycForm.backImage ? (
+                        <div className="relative">
+                          <img src={kycForm.backImage} alt="Back" className="max-h-32 mx-auto rounded" />
+                          <button
+                            onClick={() => setKycForm({ ...kycForm, backImage: '' })}
+                            className="absolute top-0 right-0 p-1 bg-red-500 rounded-full"
+                          >
+                            <X size={14} className="text-white" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer">
+                          <Upload size={32} className="mx-auto text-gray-500 mb-2" />
+                          <p className="text-gray-400 text-sm">Click to upload back side</p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleFileChange(e, 'backImage')}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Selfie Upload */}
+                  <div>
+                    <label className="text-gray-400 text-sm mb-2 block">Selfie with Document (Optional)</label>
+                    <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-accent-green transition-colors">
+                      {kycForm.selfieImage ? (
+                        <div className="relative">
+                          <img src={kycForm.selfieImage} alt="Selfie" className="max-h-32 mx-auto rounded" />
+                          <button
+                            onClick={() => setKycForm({ ...kycForm, selfieImage: '' })}
+                            className="absolute top-0 right-0 p-1 bg-red-500 rounded-full"
+                          >
+                            <X size={14} className="text-white" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer">
+                          <Camera size={32} className="mx-auto text-gray-500 mb-2" />
+                          <p className="text-gray-400 text-sm">Click to upload selfie</p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleFileChange(e, 'selfieImage')}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Submit Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowKycForm(false)}
+                      className="flex-1 py-3 bg-dark-700 text-white rounded-lg hover:bg-dark-600"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleKycSubmit}
+                      disabled={kycLoading}
+                      className="flex-1 py-3 bg-accent-green text-black font-medium rounded-lg hover:bg-accent-green/90 disabled:opacity-50"
+                    >
+                      {kycLoading ? 'Submitting...' : 'Submit KYC'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FileCheck size={32} className="text-yellow-500" />
+                  </div>
+                  <p className="text-white font-medium mb-2">KYC Not Submitted</p>
+                  <p className="text-gray-400 text-sm mb-4">Complete your KYC verification to unlock all features</p>
+                  <button
+                    onClick={() => setShowKycForm(true)}
+                    className="px-6 py-3 bg-accent-green text-black font-medium rounded-lg hover:bg-accent-green/90"
+                  >
+                    Start KYC Verification
+                  </button>
                 </div>
               )}
             </div>

@@ -435,43 +435,60 @@ const CopyTradePage = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredMasters.map(master => (
-                    <div key={master._id} className="bg-dark-800 rounded-xl p-5 border border-gray-800">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-12 h-12 bg-accent-green/20 rounded-full flex items-center justify-center">
-                          <span className="text-accent-green font-bold">{master.displayName?.charAt(0)}</span>
+                  {filteredMasters.map(master => {
+                    const isFollowing = mySubscriptions.some(sub => sub.masterId?._id === master._id || sub.masterId === master._id)
+                    return (
+                      <div key={master._id} className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-12 h-12 bg-accent-green/20 rounded-full flex items-center justify-center">
+                            <span className="text-accent-green font-bold">{master.displayName?.charAt(0)}</span>
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-white font-semibold">{master.displayName}</h3>
+                            <p className="text-gray-500 text-sm">{master.stats?.activeFollowers || 0} followers</p>
+                          </div>
+                          {isFollowing && (
+                            <span className="px-2 py-1 bg-green-500/20 text-green-500 text-xs rounded-full font-medium">
+                              Following
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <h3 className="text-white font-semibold">{master.displayName}</h3>
-                          <p className="text-gray-500 text-sm">{master.stats?.activeFollowers || 0} followers</p>
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div className="bg-dark-700 rounded-lg p-3">
+                            <p className="text-gray-500 text-xs">Win Rate</p>
+                            <p className="text-white font-semibold">{master.stats?.winRate?.toFixed(1) || 0}%</p>
+                          </div>
+                          <div className="bg-dark-700 rounded-lg p-3">
+                            <p className="text-gray-500 text-xs">Total Trades</p>
+                            <p className="text-white font-semibold">{master.stats?.totalTrades || 0}</p>
+                          </div>
+                          <div className="bg-dark-700 rounded-lg p-3">
+                            <p className="text-gray-500 text-xs">Commission</p>
+                            <p className="text-white font-semibold">{master.approvedCommissionPercentage || 0}%</p>
+                          </div>
+                          <div className="bg-dark-700 rounded-lg p-3">
+                            <p className="text-gray-500 text-xs">Profit</p>
+                            <p className="text-accent-green font-semibold">${master.stats?.totalProfitGenerated?.toFixed(2) || '0.00'}</p>
+                          </div>
                         </div>
+                        {isFollowing ? (
+                          <button
+                            onClick={() => setActiveTab('subscriptions')}
+                            className="w-full bg-green-500/20 text-green-500 py-2 rounded-lg font-medium border border-green-500/50 hover:bg-green-500/30"
+                          >
+                            ✓ Following
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { setSelectedMaster(master); setShowFollowModal(true) }}
+                            className="w-full bg-accent-green text-black py-2 rounded-lg font-medium hover:bg-accent-green/90"
+                          >
+                            Follow
+                          </button>
+                        )}
                       </div>
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="bg-dark-700 rounded-lg p-3">
-                          <p className="text-gray-500 text-xs">Win Rate</p>
-                          <p className="text-white font-semibold">{master.stats?.winRate?.toFixed(1) || 0}%</p>
-                        </div>
-                        <div className="bg-dark-700 rounded-lg p-3">
-                          <p className="text-gray-500 text-xs">Total Trades</p>
-                          <p className="text-white font-semibold">{master.stats?.totalTrades || 0}</p>
-                        </div>
-                        <div className="bg-dark-700 rounded-lg p-3">
-                          <p className="text-gray-500 text-xs">Commission</p>
-                          <p className="text-white font-semibold">{master.approvedCommissionPercentage || 0}%</p>
-                        </div>
-                        <div className="bg-dark-700 rounded-lg p-3">
-                          <p className="text-gray-500 text-xs">Profit</p>
-                          <p className="text-accent-green font-semibold">${master.stats?.totalProfitGenerated?.toFixed(2) || '0.00'}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => { setSelectedMaster(master); setShowFollowModal(true) }}
-                        className="w-full bg-accent-green text-black py-2 rounded-lg font-medium hover:bg-accent-green/90"
-                      >
-                        Follow
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -525,22 +542,32 @@ const CopyTradePage = () => {
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-700">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 pt-4 border-t border-gray-700">
                         <div>
-                          <p className="text-gray-500 text-xs">Copied Trades</p>
+                          <p className="text-gray-500 text-xs">Total Trades</p>
                           <p className="text-white font-semibold">{sub.stats?.totalCopiedTrades || 0}</p>
                         </div>
                         <div>
+                          <p className="text-gray-500 text-xs">Open / Closed</p>
+                          <p className="text-white font-semibold">
+                            <span className="text-blue-400">{sub.stats?.openTrades || 0}</span>
+                            {' / '}
+                            <span className="text-gray-400">{sub.stats?.closedTrades || 0}</span>
+                          </p>
+                        </div>
+                        <div>
                           <p className="text-gray-500 text-xs">Total Profit</p>
-                          <p className="text-accent-green font-semibold">${sub.stats?.totalProfit?.toFixed(2) || '0.00'}</p>
+                          <p className="text-green-500 font-semibold">+${(sub.stats?.totalProfit || 0).toFixed(2)}</p>
                         </div>
                         <div>
                           <p className="text-gray-500 text-xs">Total Loss</p>
-                          <p className="text-red-500 font-semibold">${sub.stats?.totalLoss?.toFixed(2) || '0.00'}</p>
+                          <p className="text-red-500 font-semibold">-${(sub.stats?.totalLoss || 0).toFixed(2)}</p>
                         </div>
                         <div>
-                          <p className="text-gray-500 text-xs">Commission Paid</p>
-                          <p className="text-white font-semibold">${sub.stats?.totalCommissionPaid?.toFixed(2) || '0.00'}</p>
+                          <p className="text-gray-500 text-xs">Net P&L</p>
+                          <p className={`font-semibold ${(sub.stats?.netPnl || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {(sub.stats?.netPnl || 0) >= 0 ? '+' : ''}${(sub.stats?.netPnl || 0).toFixed(2)}
+                          </p>
                         </div>
                       </div>
                     </div>

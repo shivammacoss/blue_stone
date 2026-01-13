@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Search, Star, X, Plus, Minus, Settings, Home, Wallet, LayoutGrid, BarChart3, Pencil, Trophy, AlertTriangle } from 'lucide-react'
 import metaApiService from '../services/metaApi'
 import binanceApiService from '../services/binanceApi'
+import priceStreamService from '../services/priceStream'
 
 const API_URL = 'http://localhost:5001/api'
 
@@ -98,6 +99,7 @@ const TradingPage = () => {
   const [killSwitchEndTime, setKillSwitchEndTime] = useState(null)
   const [killSwitchDuration, setKillSwitchDuration] = useState({ value: 30, unit: 'minutes' })
   const [killSwitchTimeLeft, setKillSwitchTimeLeft] = useState('')
+  const [globalNotification, setGlobalNotification] = useState('')
 
   const categories = ['All', 'Forex', 'Metals', 'Crypto']
 
@@ -141,21 +143,84 @@ const TradingPage = () => {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Real-time price updates - fetch every 1 second for live PnL
+  // Real-time price updates via WebSocket for institutional-grade streaming
   useEffect(() => {
-    // Initial fetch
+    // Subscribe to WebSocket price stream
+    const unsubscribe = priceStreamService.subscribe('tradingPage', (prices, updated, timestamp) => {
+      // Only update if we have valid prices (prevent flickering to zero)
+      if (!prices || Object.keys(prices).length === 0) return
+      
+      // Merge prices to prevent losing existing data
+      setLivePrices(prev => {
+        const merged = { ...prev }
+        Object.entries(prices).forEach(([symbol, price]) => {
+          if (price && price.bid) {
+            merged[symbol] = price
+          }
+        })
+        return merged
+      })
+      
+      // Update instruments with live prices (only if price is valid)
+      setInstruments(prev => prev.map(inst => {
+        const priceData = prices[inst.symbol]
+        if (priceData && priceData.bid && priceData.bid > 0) {
+          const bid = priceData.bid
+          const ask = priceData.ask || priceData.bid
+          const spread = Math.abs(ask - bid) || (bid * 0.0001)
+          return { ...inst, bid, ask, spread }
+        }
+        return inst
+      }))
+      
+      // Update selected instrument (only if price is valid)
+      const selectedPrice = prices[selectedInstrument?.symbol]
+      if (selectedPrice && selectedPrice.bid && selectedPrice.bid > 0) {
+        setSelectedInstrument(prev => ({
+          ...prev,
+          bid: selectedPrice.bid,
+          ask: selectedPrice.ask || selectedPrice.bid,
+          spread: Math.abs((selectedPrice.ask || selectedPrice.bid) - selectedPrice.bid)
+        }))
+      }
+    })
+    
+    // Fallback: also fetch via HTTP for initial load
     fetchLivePrices()
     
-    // Set up interval for real-time updates
-    const priceInterval = setInterval(() => {
-      fetchLivePrices()
-    }, 1000) // Update every 1 second for tick-by-tick
-    
-    return () => clearInterval(priceInterval)
-  }, [])
+    return () => unsubscribe()
+  }, [selectedInstrument?.symbol])
 
   // Kill Switch - Check localStorage on load and update timer
   useEffect(() => {
+    // Check auth status on mount
+    const checkAuthStatus = async () => {
+      const token = localStorage.getItem('token')
+      const user = JSON.parse(localStorage.getItem('user') || '{}')
+      if (!token || !user._id) {
+        navigate('/user/login')
+        return
+      }
+      
+      try {
+        const res = await fetch(`${API_URL}/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const data = await res.json()
+        
+        if (data.forceLogout || res.status === 403) {
+          alert(data.message || 'Session expired. Please login again.')
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+          navigate('/user/login')
+          return
+        }
+      } catch (error) {
+        console.error('Auth check error:', error)
+      }
+    }
+    checkAuthStatus()
+
     // Check if kill switch is active from localStorage
     const savedKillSwitch = localStorage.getItem(`killSwitch_${accountId}`)
     if (savedKillSwitch) {
@@ -207,26 +272,38 @@ const TradingPage = () => {
 
   // Update account summary when prices change (for real-time equity/margin)
   useEffect(() => {
+    // Skip if no live prices yet (prevent flickering to zero)
+    if (Object.keys(livePrices).length === 0) return
+    
     // Calculate total floating PnL from current prices
     let totalFloatingPnl = 0
     let totalUsedMargin = 0
+    let hasValidPrices = false
     
     if (openTrades.length > 0) {
       openTrades.forEach(trade => {
         // Use livePrices first, fallback to instruments
         const livePrice = livePrices[trade.symbol]
         const inst = instruments.find(i => i.symbol === trade.symbol)
-        const currentPrice = livePrice 
-          ? (trade.side === 'BUY' ? livePrice.bid : livePrice.ask)
-          : (inst ? (trade.side === 'BUY' ? inst.bid : inst.ask) : trade.openPrice)
         
-        const pnl = trade.side === 'BUY'
-          ? (currentPrice - trade.openPrice) * trade.quantity * trade.contractSize
-          : (trade.openPrice - currentPrice) * trade.quantity * trade.contractSize
-        totalFloatingPnl += pnl - (trade.commission || 0) - (trade.swap || 0)
+        // Only calculate if we have a valid price
+        const currentPrice = livePrice?.bid 
+          ? (trade.side === 'BUY' ? livePrice.bid : livePrice.ask)
+          : (inst?.bid ? (trade.side === 'BUY' ? inst.bid : inst.ask) : null)
+        
+        if (currentPrice && currentPrice > 0) {
+          hasValidPrices = true
+          const pnl = trade.side === 'BUY'
+            ? (currentPrice - trade.openPrice) * trade.quantity * trade.contractSize
+            : (trade.openPrice - currentPrice) * trade.quantity * trade.contractSize
+          totalFloatingPnl += pnl - (trade.commission || 0) - (trade.swap || 0)
+        }
         totalUsedMargin += trade.marginUsed || 0
       })
     }
+    
+    // Only update if we have valid prices (prevent flickering to zero)
+    if (!hasValidPrices && openTrades.length > 0) return
     
     // Always update account summary with real-time values
     const newEquity = Math.round((accountSummary.balance + (accountSummary.credit || 0) + totalFloatingPnl) * 100) / 100
@@ -453,15 +530,26 @@ const TradingPage = () => {
   }
 
   // Activate Kill Switch
-  const activateKillSwitch = () => {
+  const activateKillSwitch = (customDuration = null) => {
     const multipliers = { seconds: 1000, minutes: 60 * 1000, hours: 60 * 60 * 1000, days: 24 * 60 * 60 * 1000 }
-    const duration = killSwitchDuration.value * multipliers[killSwitchDuration.unit]
+    const durationConfig = customDuration || killSwitchDuration
+    const duration = durationConfig.value * multipliers[durationConfig.unit]
     const endTime = Date.now() + duration
     
     setKillSwitchActive(true)
     setKillSwitchEndTime(endTime)
     localStorage.setItem(`killSwitch_${accountId}`, endTime.toString())
     setShowKillSwitchModal(false)
+    
+    // Show global notification at top
+    const timeStr = `${durationConfig.value} ${durationConfig.unit}`
+    setGlobalNotification(`🛑 Kill Switch activated for ${timeStr}! Trading is now blocked.`)
+    setTimeout(() => setGlobalNotification(''), 5000)
+  }
+
+  // Quick activate Kill Switch with default 30 minutes (one-click)
+  const quickActivateKillSwitch = () => {
+    activateKillSwitch({ value: 30, unit: 'minutes' })
   }
 
   // Deactivate Kill Switch
@@ -470,6 +558,10 @@ const TradingPage = () => {
     setKillSwitchEndTime(null)
     setKillSwitchTimeLeft('')
     localStorage.removeItem(`killSwitch_${accountId}`)
+    
+    // Show global notification at top
+    setGlobalNotification('✅ Kill Switch deactivated. Trading is now enabled.')
+    setTimeout(() => setGlobalNotification(''), 3000)
   }
 
   // Execute Market Order (BUY or SELL)
@@ -492,8 +584,8 @@ const TradingPage = () => {
       const bid = livePrice?.bid || selectedInstrument.bid
       const ask = livePrice?.ask || selectedInstrument.ask
       
-      if (!bid || !ask || bid === 0 || ask === 0) {
-        setTradeError('Price not available. Please wait for prices to load.')
+      if (!bid || !ask || bid <= 0 || ask <= 0 || isNaN(bid) || isNaN(ask)) {
+        setTradeError('Market is closed or no price data available. Trading is not available at this time.')
         setIsExecutingTrade(false)
         return
       }
@@ -976,6 +1068,19 @@ const TradingPage = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Global Notification Banner - Top of Page */}
+        {globalNotification && (
+          <div className="fixed top-0 left-0 right-0 z-[100] animate-slide-down">
+            <div className={`px-4 py-3 text-center font-medium text-sm shadow-lg ${
+              globalNotification.includes('🛑') 
+                ? 'bg-red-600 text-white' 
+                : 'bg-green-600 text-white'
+            }`}>
+              {globalNotification}
+            </div>
+          </div>
+        )}
+
         {/* Challenge Account Banner */}
         {accountType === 'challenge' && challengeAccount && (
           <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-b border-yellow-500/30 px-3 py-2 flex items-center justify-between shrink-0">
@@ -1028,15 +1133,16 @@ const TradingPage = () => {
           >
             {isMobile ? 'Order' : 'New Order'}
           </button>
-          {/* Kill Switch Button */}
+          {/* Kill Switch Button - One click to activate (30min default), long press for options */}
           <button 
-            onClick={() => killSwitchActive ? deactivateKillSwitch() : setShowKillSwitchModal(true)}
+            onClick={() => killSwitchActive ? deactivateKillSwitch() : quickActivateKillSwitch()}
+            onContextMenu={(e) => { e.preventDefault(); if (!killSwitchActive) setShowKillSwitchModal(true) }}
             className={`ml-2 text-xs px-2 sm:px-3 py-1 rounded flex items-center gap-1 ${
               killSwitchActive 
                 ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
                 : 'bg-orange-500 hover:bg-orange-600 text-white'
             }`}
-            title={killSwitchActive ? `Trading blocked for ${killSwitchTimeLeft}` : 'Activate Kill Switch to prevent emotional trading'}
+            title={killSwitchActive ? `Click to deactivate (${killSwitchTimeLeft} left)` : 'Click: Activate 30min | Right-click: Custom duration'}
           >
             {killSwitchActive ? (
               <>
@@ -1045,7 +1151,7 @@ const TradingPage = () => {
               </>
             ) : (
               <>
-                <span className="hidden sm:inline">Kill Switch</span>
+                <span className="hidden sm:inline">🛑 Kill Switch</span>
                 <span className="sm:hidden">🛑</span>
               </>
             )}
@@ -1133,7 +1239,12 @@ const TradingPage = () => {
                         <div className="text-gray-600 text-[9px]">Bid</div>
                       </div>
                       <div className="bg-[#2a2a2a] px-1.5 py-0.5 rounded text-cyan-400 text-[10px] font-medium min-w-[28px] text-center mx-2">
-                        {inst.spread > 0 ? inst.spread.toFixed(1) : '-'}
+                        {inst.spread > 0 ? (
+                          // Convert spread to pips: forex pairs use 0.0001, JPY pairs use 0.01, metals/crypto use actual spread
+                          inst.symbol.includes('JPY') ? (inst.spread * 100).toFixed(1) :
+                          inst.bid > 100 ? inst.spread.toFixed(2) : // Metals/Crypto - show actual spread
+                          (inst.spread * 10000).toFixed(1) // Forex - convert to pips
+                        ) : '-'}
                       </div>
                       <div className="text-right w-14">
                         <div className="text-green-500 text-xs font-mono">
@@ -1245,7 +1356,7 @@ const TradingPage = () => {
                         <button 
                           onClick={() => executeMarketOrder('BUY')}
                           disabled={isExecutingTrade}
-                          className="w-8 h-8 rounded-full bg-green-500 text-white text-sm font-bold hover:bg-green-600 transition-colors disabled:opacity-50"
+                          className="w-8 h-8 rounded-full bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors disabled:opacity-50"
                         >
                           B
                         </button>
@@ -1476,22 +1587,21 @@ const TradingPage = () => {
             {orderTab === 'Market' ? (
               <>
                 <div className="p-3 flex-1 overflow-y-auto">
-                  <select className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white text-sm mb-3 focus:outline-none">
-                    <option>Regular settings</option>
-                  </select>
+                  {/* Account Leverage Display */}
+                  <div className="flex items-center justify-between bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 mb-3">
+                    <span className="text-gray-400 text-xs">Leverage</span>
+                    <span className="text-yellow-500 font-semibold text-sm">{account?.leverage || '1:100'}</span>
+                  </div>
 
-                  {/* Sell/Buy Buttons - Select side only */}
+                  {/* One-Click Buy/Sell Buttons */}
                   <div className="flex gap-2 mb-3">
                     <button 
-                      onClick={() => setSelectedSide('SELL')}
-                      className={`flex-1 rounded py-2 text-center transition-colors ${
-                        selectedSide === 'SELL' 
-                          ? 'bg-red-500/20 border-2 border-red-500' 
-                          : 'bg-[#1a1a1a] border-2 border-gray-600 hover:border-red-500/50'
-                      }`}
+                      onClick={() => executeMarketOrder('SELL')}
+                      disabled={isExecutingTrade}
+                      className="flex-1 rounded py-3 text-center transition-colors bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <div className="text-gray-400 text-[10px]">Sell</div>
-                      <div className="text-red-500 font-mono text-base font-semibold">
+                      <div className="text-white text-[10px] font-medium">SELL</div>
+                      <div className="text-white font-mono text-lg font-bold">
                         {selectedInstrument.symbol?.includes('JPY') 
                           ? selectedInstrument.bid?.toFixed(3)
                           : ['BTCUSD', 'ETHUSD', 'XAUUSD'].includes(selectedInstrument.symbol)
@@ -1500,21 +1610,42 @@ const TradingPage = () => {
                       </div>
                     </button>
                     <button 
-                      onClick={() => setSelectedSide('BUY')}
-                      className={`flex-1 rounded py-2 text-center transition-colors ${
-                        selectedSide === 'BUY' 
-                          ? 'bg-blue-500/20 border-2 border-blue-500' 
-                          : 'bg-[#1a1a1a] border-2 border-gray-600 hover:border-blue-500/50'
-                      }`}
+                      onClick={() => executeMarketOrder('BUY')}
+                      disabled={isExecutingTrade}
+                      className="flex-1 rounded py-3 text-center transition-colors bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <div className="text-gray-400 text-[10px]">Buy</div>
-                      <div className="text-blue-500 font-mono text-base font-semibold">
+                      <div className="text-white text-[10px] font-medium">BUY</div>
+                      <div className="text-white font-mono text-lg font-bold">
                         {selectedInstrument.symbol?.includes('JPY') 
                           ? selectedInstrument.ask?.toFixed(3)
                           : ['BTCUSD', 'ETHUSD', 'XAUUSD'].includes(selectedInstrument.symbol)
                             ? selectedInstrument.ask?.toFixed(2)
                             : selectedInstrument.ask?.toFixed(5)}
                       </div>
+                    </button>
+                  </div>
+
+                  {/* Side Selection for detailed order */}
+                  <div className="flex gap-2 mb-3">
+                    <button 
+                      onClick={() => setSelectedSide('SELL')}
+                      className={`flex-1 rounded py-1.5 text-center text-xs transition-colors ${
+                        selectedSide === 'SELL' 
+                          ? 'bg-red-500/20 border border-red-500 text-red-400' 
+                          : 'bg-[#1a1a1a] border border-gray-600 text-gray-400 hover:border-red-500/50'
+                      }`}
+                    >
+                      Sell Side
+                    </button>
+                    <button 
+                      onClick={() => setSelectedSide('BUY')}
+                      className={`flex-1 rounded py-1.5 text-center text-xs transition-colors ${
+                        selectedSide === 'BUY' 
+                          ? 'bg-blue-500/20 border border-blue-500 text-blue-400' 
+                          : 'bg-[#1a1a1a] border border-gray-600 text-gray-400 hover:border-blue-500/50'
+                      }`}
+                    >
+                      Buy Side
                     </button>
                   </div>
 
@@ -1685,9 +1816,11 @@ const TradingPage = () => {
                           className={`py-2 rounded text-xs font-medium transition-colors ${
                             pendingOrderType === type
                               ? type.includes('BUY') 
-                                ? 'bg-green-600 text-white' 
-                                : 'bg-[#1a1a1a] border border-gray-600 text-white'
-                              : 'bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:text-white'
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-red-600 text-white'
+                              : type.includes('BUY')
+                                ? 'bg-[#1a1a1a] border border-blue-500/30 text-blue-400 hover:bg-blue-500/10'
+                                : 'bg-[#1a1a1a] border border-red-500/30 text-red-400 hover:bg-red-500/10'
                           }`}
                         >
                           {type}
@@ -1843,7 +1976,7 @@ const TradingPage = () => {
               <span className="text-gray-500 ml-4 shrink-0">Credit: <span className="text-purple-400">${accountSummary.credit?.toFixed(2) || '0.00'}</span></span>
               <span className="text-gray-500 ml-4 shrink-0">Eq: <span className={accountSummary.floatingPnl >= 0 ? 'text-green-500' : 'text-red-500'}>${accountSummary.equity?.toFixed(2) || '0.00'}</span></span>
               <span className="text-gray-500 ml-4 shrink-0">Margin: <span className="text-yellow-500">${accountSummary.usedMargin?.toFixed(2) || '0.00'}</span></span>
-              <span className="text-gray-500 ml-4 shrink-0">Free: <span className="text-green-500">${accountSummary.freeMargin?.toFixed(2) || '0.00'}</span></span>
+              <span className="text-gray-500 ml-4 shrink-0">Free: <span className={accountSummary.freeMargin >= 0 ? 'text-blue-400' : 'text-red-500'}>${accountSummary.freeMargin?.toFixed(2) || '0.00'}</span></span>
             </>
           )}
           <div className="flex-1" />

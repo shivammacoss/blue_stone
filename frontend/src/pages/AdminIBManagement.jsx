@@ -14,14 +14,16 @@ import {
   X,
   RefreshCw,
   Settings,
-  ChevronDown
+  ChevronDown,
+  ArrowRightLeft,
+  UserPlus
 } from 'lucide-react'
 
 const API_URL = 'http://localhost:5001/api'
 
 const AdminIBManagement = () => {
   const [searchTerm, setSearchTerm] = useState('')
-  const [activeTab, setActiveTab] = useState('ibs') // ibs, applications, plans, settings
+  const [activeTab, setActiveTab] = useState('ibs') // ibs, applications, plans, settings, transfer
   const [ibs, setIbs] = useState([])
   const [applications, setApplications] = useState([])
   const [plans, setPlans] = useState([])
@@ -31,6 +33,13 @@ const AdminIBManagement = () => {
   const [selectedIB, setSelectedIB] = useState(null)
   const [showPlanModal, setShowPlanModal] = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
+  
+  // Referral Transfer states
+  const [allUsers, setAllUsers] = useState([])
+  const [selectedUsers, setSelectedUsers] = useState([])
+  const [targetIB, setTargetIB] = useState('')
+  const [transferLoading, setTransferLoading] = useState(false)
+  const [userSearchTerm, setUserSearchTerm] = useState('')
 
   useEffect(() => {
     fetchDashboard()
@@ -38,7 +47,78 @@ const AdminIBManagement = () => {
     fetchApplications()
     fetchPlans()
     fetchSettings()
+    fetchAllUsers()
   }, [])
+
+  const fetchAllUsers = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/users`)
+      const data = await res.json()
+      setAllUsers(data.users || [])
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    }
+  }
+
+  const handleTransferReferrals = async () => {
+    if (selectedUsers.length === 0) {
+      alert('Please select at least one user to transfer')
+      return
+    }
+    if (!targetIB) {
+      alert('Please select a target IB')
+      return
+    }
+
+    setTransferLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/ib/admin/transfer-referrals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: selectedUsers,
+          targetIBId: targetIB
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert(`Successfully transferred ${data.transferredCount} users to the selected IB`)
+        setSelectedUsers([])
+        setTargetIB('')
+        fetchAllUsers()
+        fetchIBs()
+      } else {
+        alert(data.message || 'Failed to transfer referrals')
+      }
+    } catch (error) {
+      console.error('Error transferring referrals:', error)
+      alert('Failed to transfer referrals')
+    }
+    setTransferLoading(false)
+  }
+
+  const toggleUserSelection = (userId) => {
+    setSelectedUsers(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    )
+  }
+
+  const selectAllUsers = () => {
+    const filteredUserIds = filteredUsers.map(u => u._id)
+    setSelectedUsers(filteredUserIds)
+  }
+
+  const deselectAllUsers = () => {
+    setSelectedUsers([])
+  }
+
+  const filteredUsers = allUsers.filter(user => 
+    user.firstName?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user._id?.includes(userSearchTerm)
+  )
 
   const fetchDashboard = async () => {
     try {
@@ -246,6 +326,7 @@ const AdminIBManagement = () => {
           { id: 'ibs', label: 'Active IBs', count: dashboard?.ibs?.active },
           { id: 'applications', label: 'Applications', count: applications.length },
           { id: 'plans', label: 'Commission Plans', count: plans.length },
+          { id: 'transfer', label: 'Referral Transfer', icon: ArrowRightLeft },
           { id: 'settings', label: 'Settings' }
         ].map(tab => (
           <button
@@ -547,6 +628,136 @@ const AdminIBManagement = () => {
                 onChange={(e) => handleUpdateSettings({ commissionSettings: { ...settings.commissionSettings, minWithdrawalAmount: parseFloat(e.target.value) } })}
                 className="bg-dark-700 border border-gray-700 rounded-lg px-4 py-2 text-white w-32"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Referral Transfer Tab */}
+      {activeTab === 'transfer' && (
+        <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-gray-800">
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowRightLeft size={20} className="text-purple-500" />
+              <h2 className="text-white font-semibold text-lg">Referral Transfer</h2>
+            </div>
+            <p className="text-gray-500 text-sm">Transfer users to any IB partner. Select users and choose the target IB.</p>
+          </div>
+
+          <div className="p-4 sm:p-5 space-y-4">
+            {/* Target IB Selection */}
+            <div className="bg-dark-700 rounded-lg p-4">
+              <label className="text-gray-400 text-sm block mb-2">Select Target IB</label>
+              <select
+                value={targetIB}
+                onChange={(e) => setTargetIB(e.target.value)}
+                className="w-full bg-dark-600 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="">-- Select an IB --</option>
+                {ibs.filter(ib => ib.ibStatus === 'ACTIVE').map(ib => (
+                  <option key={ib._id} value={ib._id}>
+                    {ib.firstName} {ib.lastName} ({ib.email}) - Code: {ib.referralCode || 'N/A'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* User Search and Selection */}
+            <div className="bg-dark-700 rounded-lg p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <label className="text-gray-400 text-sm block mb-1">Select Users to Transfer</label>
+                  <p className="text-gray-500 text-xs">{selectedUsers.length} users selected</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={selectAllUsers}
+                    className="px-3 py-1.5 bg-blue-500/20 text-blue-500 rounded-lg text-sm hover:bg-blue-500/30"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    onClick={deselectAllUsers}
+                    className="px-3 py-1.5 bg-gray-600 text-gray-300 rounded-lg text-sm hover:bg-gray-500"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative mb-3">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Search users by name, email or ID..."
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  className="w-full bg-dark-600 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="max-h-[400px] overflow-y-auto space-y-2">
+                {filteredUsers.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No users found</p>
+                ) : (
+                  filteredUsers.map(user => (
+                    <div
+                      key={user._id}
+                      onClick={() => toggleUserSelection(user._id)}
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedUsers.includes(user._id)
+                          ? 'bg-purple-500/20 border border-purple-500/50'
+                          : 'bg-dark-600 border border-transparent hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          selectedUsers.includes(user._id)
+                            ? 'bg-purple-500 border-purple-500'
+                            : 'border-gray-500'
+                        }`}>
+                          {selectedUsers.includes(user._id) && <Check size={12} className="text-white" />}
+                        </div>
+                        <div>
+                          <p className="text-white text-sm font-medium">{user.firstName} {user.lastName || ''}</p>
+                          <p className="text-gray-500 text-xs">{user.email}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-gray-400 text-xs font-mono">{user._id?.slice(-8)}</p>
+                        {user.referredBy && (
+                          <p className="text-yellow-500 text-xs">Current IB: {user.referredBy?.slice(-6)}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Transfer Button */}
+            <div className="flex justify-end">
+              <button
+                onClick={handleTransferReferrals}
+                disabled={transferLoading || selectedUsers.length === 0 || !targetIB}
+                className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 ${
+                  transferLoading || selectedUsers.length === 0 || !targetIB
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-purple-500 text-white hover:bg-purple-600'
+                }`}
+              >
+                {transferLoading ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    Transferring...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRightLeft size={18} />
+                    Transfer {selectedUsers.length} User{selectedUsers.length !== 1 ? 's' : ''}
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

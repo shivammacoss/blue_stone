@@ -47,6 +47,9 @@ const WalletPage = () => {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [challengeModeEnabled, setChallengeModeEnabled] = useState(false)
+  const [currencies, setCurrencies] = useState([])
+  const [selectedCurrency, setSelectedCurrency] = useState(null)
+  const [localAmount, setLocalAmount] = useState('')
 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -74,7 +77,36 @@ const WalletPage = () => {
       fetchTransactions()
     }
     fetchPaymentMethods()
+    fetchCurrencies()
   }, [user._id])
+
+  const fetchCurrencies = async () => {
+    try {
+      const res = await fetch(`${API_URL}/payment-methods/currencies/active`)
+      const data = await res.json()
+      setCurrencies(data.currencies || [])
+      // Set USD as default if no currencies
+      if (!data.currencies || data.currencies.length === 0) {
+        setSelectedCurrency({ currency: 'USD', symbol: '$', rateToUSD: 1, markup: 0 })
+      }
+    } catch (error) {
+      console.error('Error fetching currencies:', error)
+    }
+  }
+
+  // Calculate USD amount from local currency
+  const calculateUSDAmount = (localAmt, currency) => {
+    if (!currency || currency.currency === 'USD') return localAmt
+    const effectiveRate = currency.rateToUSD * (1 + (currency.markup || 0) / 100)
+    return localAmt / effectiveRate
+  }
+
+  // Calculate local amount from USD
+  const calculateLocalAmount = (usdAmt, currency) => {
+    if (!currency || currency.currency === 'USD') return usdAmt
+    const effectiveRate = currency.rateToUSD * (1 + (currency.markup || 0) / 100)
+    return usdAmt * effectiveRate
+  }
 
   const fetchChallengeStatus = async () => {
     try {
@@ -125,7 +157,7 @@ const WalletPage = () => {
       setError('Please login to make a deposit')
       return
     }
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!localAmount || parseFloat(localAmount) <= 0) {
       setError('Please enter a valid amount')
       return
     }
@@ -134,13 +166,23 @@ const WalletPage = () => {
       return
     }
 
+    // Calculate USD amount from local currency
+    const usdAmount = selectedCurrency && selectedCurrency.currency !== 'USD'
+      ? calculateUSDAmount(parseFloat(localAmount), selectedCurrency)
+      : parseFloat(localAmount)
+
     try {
       const res = await fetch(`${API_URL}/wallet/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user._id,
-          amount: parseFloat(amount),
+          amount: usdAmount, // USD amount for wallet
+          localAmount: parseFloat(localAmount),
+          currency: selectedCurrency?.currency || 'USD',
+          currencySymbol: selectedCurrency?.symbol || '$',
+          exchangeRate: selectedCurrency?.rateToUSD || 1,
+          markup: selectedCurrency?.markup || 0,
           paymentMethod: selectedPaymentMethod.type,
           transactionRef
         })
@@ -151,8 +193,10 @@ const WalletPage = () => {
         setSuccess('Deposit request submitted successfully!')
         setShowDepositModal(false)
         setAmount('')
+        setLocalAmount('')
         setTransactionRef('')
         setSelectedPaymentMethod(null)
+        setSelectedCurrency(null)
         fetchWallet()
         fetchTransactions()
         setTimeout(() => setSuccess(''), 3000)
@@ -407,25 +451,35 @@ const WalletPage = () => {
                             {tx.type === 'Withdrawal' && <ArrowUpCircle size={18} className="text-red-500" />}
                             {tx.type === 'Transfer_To_Account' && <Send size={18} className="text-blue-500" />}
                             {tx.type === 'Transfer_From_Account' && <Download size={18} className="text-purple-500" />}
+                            {tx.type === 'Account_Transfer_Out' && <ArrowUpCircle size={18} className="text-orange-500" />}
+                            {tx.type === 'Account_Transfer_In' && <ArrowDownCircle size={18} className="text-teal-500" />}
                             <div>
                               <span className="text-white">
                                 {tx.type === 'Transfer_To_Account' ? 'To Trading Account' : 
                                  tx.type === 'Transfer_From_Account' ? 'From Trading Account' : 
+                                 tx.type === 'Account_Transfer_Out' ? 'Account Transfer (Out)' :
+                                 tx.type === 'Account_Transfer_In' ? 'Account Transfer (In)' :
                                  tx.type}
                               </span>
                               {tx.tradingAccountName && (
                                 <p className="text-gray-500 text-xs">{tx.tradingAccountName}</p>
                               )}
+                              {tx.type === 'Account_Transfer_Out' && tx.toTradingAccountName && (
+                                <p className="text-gray-500 text-xs">→ {tx.toTradingAccountName}</p>
+                              )}
+                              {tx.type === 'Account_Transfer_In' && tx.fromTradingAccountName && (
+                                <p className="text-gray-500 text-xs">← {tx.fromTradingAccountName}</p>
+                              )}
                             </div>
                           </div>
                         </td>
                         <td className={`py-4 px-4 font-medium ${
-                          tx.type === 'Deposit' || tx.type === 'Transfer_From_Account' ? 'text-green-500' : 'text-red-500'
+                          tx.type === 'Deposit' || tx.type === 'Transfer_From_Account' || tx.type === 'Account_Transfer_In' ? 'text-green-500' : 'text-red-500'
                         }`}>
-                          {tx.type === 'Deposit' || tx.type === 'Transfer_From_Account' ? '+' : '-'}${tx.amount.toLocaleString()}
+                          {tx.type === 'Deposit' || tx.type === 'Transfer_From_Account' || tx.type === 'Account_Transfer_In' ? '+' : '-'}${tx.amount.toLocaleString()}
                         </td>
                         <td className="py-4 px-4 text-gray-400">
-                          {tx.type === 'Transfer_To_Account' || tx.type === 'Transfer_From_Account' ? 'Internal' : tx.paymentMethod}
+                          {tx.type === 'Transfer_To_Account' || tx.type === 'Transfer_From_Account' || tx.type === 'Account_Transfer_Out' || tx.type === 'Account_Transfer_In' ? 'Internal' : tx.paymentMethod}
                         </td>
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-2">
@@ -470,15 +524,63 @@ const WalletPage = () => {
               </button>
             </div>
 
+            {/* Currency Selection */}
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-2">Amount</label>
+              <label className="block text-gray-400 text-sm mb-2">Select Your Currency</label>
+              <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto p-1">
+                <button
+                  onClick={() => setSelectedCurrency({ currency: 'USD', symbol: '$', rateToUSD: 1, markup: 0 })}
+                  className={`p-2 rounded-lg border transition-colors flex flex-col items-center gap-0.5 ${
+                    !selectedCurrency || selectedCurrency.currency === 'USD'
+                      ? 'border-accent-green bg-accent-green/10'
+                      : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                  }`}
+                >
+                  <span className="text-lg">$</span>
+                  <span className="text-white text-[10px]">USD</span>
+                </button>
+                {currencies.map((curr) => (
+                  <button
+                    key={curr._id}
+                    onClick={() => setSelectedCurrency(curr)}
+                    className={`p-2 rounded-lg border transition-colors flex flex-col items-center gap-0.5 ${
+                      selectedCurrency?.currency === curr.currency
+                        ? 'border-accent-green bg-accent-green/10'
+                        : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                    }`}
+                  >
+                    <span className="text-lg">{curr.symbol}</span>
+                    <span className="text-white text-[10px]">{curr.currency}</span>
+                  </button>
+                ))}
+              </div>
+              {currencies.length === 0 && (
+                <p className="text-gray-500 text-xs mt-1">Only USD available. Admin can add more currencies.</p>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-gray-400 text-sm mb-2">
+                Amount {selectedCurrency ? `(${selectedCurrency.symbol} ${selectedCurrency.currency})` : '($ USD)'}
+              </label>
               <input
                 type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount"
+                value={localAmount}
+                onChange={(e) => setLocalAmount(e.target.value)}
+                placeholder={`Enter amount in ${selectedCurrency?.currency || 'USD'}`}
                 className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-green"
               />
+              {selectedCurrency && selectedCurrency.currency !== 'USD' && localAmount && parseFloat(localAmount) > 0 && (
+                <div className="mt-2 p-3 bg-accent-green/10 rounded-lg border border-accent-green/30">
+                  <div className="text-center">
+                    <p className="text-gray-400 text-xs mb-1">You will receive</p>
+                    <p className="text-green-400 font-bold text-2xl">${calculateUSDAmount(parseFloat(localAmount), selectedCurrency).toFixed(2)} USD</p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      Exchange Rate: 1 USD = {selectedCurrency.symbol}{(selectedCurrency.rateToUSD * (1 + (selectedCurrency.markup || 0) / 100)).toFixed(2)} {selectedCurrency.currency}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mb-4">

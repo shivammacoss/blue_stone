@@ -50,6 +50,9 @@ router.post('/', async (req, res) => {
       spreadValue,
       commissionType,
       commissionValue,
+      commissionOnBuy,
+      commissionOnSell,
+      commissionOnClose,
       swapLong,
       swapShort,
       swapType
@@ -69,6 +72,9 @@ router.post('/', async (req, res) => {
       spreadValue: spreadValue || 0,
       commissionType: commissionType || 'PER_LOT',
       commissionValue: commissionValue || 0,
+      commissionOnBuy: commissionOnBuy !== false,
+      commissionOnSell: commissionOnSell !== false,
+      commissionOnClose: commissionOnClose || false,
       swapLong: swapLong || 0,
       swapShort: swapShort || 0,
       swapType: swapType || 'POINTS',
@@ -90,10 +96,14 @@ router.put('/:id', async (req, res) => {
       userId,
       instrumentSymbol,
       segment,
+      accountTypeId,
       spreadType,
       spreadValue,
       commissionType,
       commissionValue,
+      commissionOnBuy,
+      commissionOnSell,
+      commissionOnClose,
       swapLong,
       swapShort,
       swapType,
@@ -109,10 +119,14 @@ router.put('/:id', async (req, res) => {
     if (userId !== undefined) charge.userId = userId || null
     if (instrumentSymbol !== undefined) charge.instrumentSymbol = instrumentSymbol
     if (segment !== undefined) charge.segment = segment
+    if (accountTypeId !== undefined) charge.accountTypeId = accountTypeId || null
     if (spreadType !== undefined) charge.spreadType = spreadType
     if (spreadValue !== undefined) charge.spreadValue = spreadValue
     if (commissionType !== undefined) charge.commissionType = commissionType
     if (commissionValue !== undefined) charge.commissionValue = commissionValue
+    if (commissionOnBuy !== undefined) charge.commissionOnBuy = commissionOnBuy
+    if (commissionOnSell !== undefined) charge.commissionOnSell = commissionOnSell
+    if (commissionOnClose !== undefined) charge.commissionOnClose = commissionOnClose
     if (swapLong !== undefined) charge.swapLong = swapLong
     if (swapShort !== undefined) charge.swapShort = swapShort
     if (swapType !== undefined) charge.swapType = swapType

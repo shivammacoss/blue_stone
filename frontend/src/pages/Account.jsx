@@ -48,6 +48,8 @@ const Account = () => {
   const [showPinModal, setShowPinModal] = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [showAccountTransferModal, setShowAccountTransferModal] = useState(false)
+  const [targetAccount, setTargetAccount] = useState(null)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showRulesModal, setShowRulesModal] = useState(false)
   const [selectedChallengeAccount, setSelectedChallengeAccount] = useState(null)
@@ -409,6 +411,58 @@ const Account = () => {
     }
   }
 
+  const handleAccountToAccountTransfer = async () => {
+    const pinValue = transferPin.join('')
+    if (!transferAmount || parseFloat(transferAmount) <= 0) {
+      setError('Please enter a valid amount')
+      return
+    }
+    if (!targetAccount) {
+      setError('Please select a target account')
+      return
+    }
+    if (parseFloat(transferAmount) > selectedAccount.balance) {
+      setError('Insufficient account balance')
+      return
+    }
+    if (pinSecurityEnabled && pinValue.length !== 4) {
+      setError('Please enter your 4-digit PIN')
+      return
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/trading-accounts/account-transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          fromAccountId: selectedAccount._id,
+          toAccountId: targetAccount._id,
+          amount: parseFloat(transferAmount),
+          pin: pinSecurityEnabled ? pinValue : '0000',
+          skipPinVerification: !pinSecurityEnabled
+        })
+      })
+      const data = await res.json()
+      
+      if (res.ok) {
+        setSuccess(`$${transferAmount} transferred from ${selectedAccount.accountId} to ${targetAccount.accountId}!`)
+        setShowAccountTransferModal(false)
+        setTransferAmount('')
+        setTransferPin(['', '', '', ''])
+        setSelectedAccount(null)
+        setTargetAccount(null)
+        fetchUserAccounts()
+        setTimeout(() => setSuccess(''), 3000)
+      } else {
+        setError(data.message || 'Transfer failed')
+      }
+    } catch (error) {
+      console.error('Account transfer error:', error)
+      setError('Error transferring funds')
+    }
+  }
+
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -705,22 +759,28 @@ const Account = () => {
                   {/* Card Footer - Actions */}
                   <div className="flex border-t border-gray-800">
                     <button
-                      onClick={() => navigate(`/trade/${account._id}`)}
-                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-sm' : 'py-3'} bg-accent-green text-black font-medium hover:bg-accent-green/90 transition-colors`}
+                      onClick={() => isMobile ? navigate(`/mobile?account=${account._id}`) : navigate(`/trade/${account._id}`)}
+                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} bg-accent-green text-black font-medium hover:bg-accent-green/90 transition-colors`}
                     >
-                      <ArrowRight size={isMobile ? 14 : 16} /> Trade
+                      <ArrowRight size={isMobile ? 12 : 16} /> Trade
                     </button>
                     <button
                       onClick={() => { setSelectedAccount(account); setShowTransferModal(true); }}
-                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-sm' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
                     >
-                      <Plus size={isMobile ? 14 : 16} /> Deposit
+                      <Plus size={isMobile ? 12 : 16} /> Deposit
                     </button>
                     <button
                       onClick={() => { setSelectedAccount(account); setShowWithdrawModal(true); }}
-                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-sm' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
                     >
-                      <Minus size={isMobile ? 14 : 16} /> Withdraw
+                      <Minus size={isMobile ? 12 : 16} /> Withdraw
+                    </button>
+                    <button
+                      onClick={() => { setSelectedAccount(account); setShowAccountTransferModal(true); }}
+                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-blue-400 hover:text-blue-300 hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                    >
+                      <Copy size={isMobile ? 12 : 16} /> Transfer
                     </button>
                   </div>
                 </div>
@@ -784,45 +844,39 @@ const Account = () => {
               <div className="mb-6">
                 <div className="p-3 bg-dark-700 rounded-lg mb-4">
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-400">Your Wallet Balance:</span>
-                    <span className={`font-medium ${walletBalance >= selectedType.minDeposit ? 'text-green-500' : 'text-red-500'}`}>
-                      ${walletBalance.toLocaleString()}
-                    </span>
+                    <span className="text-gray-400">Account Type:</span>
+                    <span className="text-white font-medium">{selectedType.name}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Required Deposit:</span>
-                    <span className="text-white font-medium">${selectedType.minDeposit.toLocaleString()}</span>
+                    <span className="text-gray-400">Leverage:</span>
+                    <span className="text-white font-medium">{selectedType.leverage}</span>
                   </div>
                 </div>
 
-                {walletBalance < selectedType.minDeposit ? (
-                  <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg mb-4">
-                    <p className="text-red-400 text-sm">
-                      Insufficient balance. Please <button onClick={() => navigate('/wallet')} className="text-accent-green underline">deposit funds</button> to your wallet first.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <label className="block text-gray-400 text-sm mb-3">Set 4-digit Account PIN</label>
-                    <div className="flex gap-3 justify-center">
-                      {pin.map((digit, index) => (
-                        <input
-                          key={index}
-                          id={`pin-${index}`}
-                          type="password"
-                          inputMode="numeric"
-                          maxLength={1}
-                          value={digit}
-                          onChange={(e) => handlePinChange(index, e.target.value, pin, setPin, 'pin')}
-                          onKeyDown={(e) => handlePinKeyDown(e, index, pin, setPin, 'pin')}
-                          onFocus={handlePinFocus}
-                          autoFocus={index === 0}
-                          className="w-14 h-14 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-2xl focus:outline-none focus:border-accent-green"
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
+                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg mb-4">
+                  <p className="text-blue-400 text-sm">
+                    Account will be created with $0 balance. You can deposit funds after creation.
+                  </p>
+                </div>
+
+                <label className="block text-gray-400 text-sm mb-3">Set 4-digit Account PIN</label>
+                <div className="flex gap-3 justify-center">
+                  {pin.map((digit, index) => (
+                    <input
+                      key={index}
+                      id={`pin-${index}`}
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handlePinChange(index, e.target.value, pin, setPin, 'pin')}
+                      onKeyDown={(e) => handlePinKeyDown(e, index, pin, setPin, 'pin')}
+                      onFocus={handlePinFocus}
+                      autoFocus={index === 0}
+                      className="w-14 h-14 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-2xl focus:outline-none focus:border-accent-green"
+                    />
+                  ))}
+                </div>
               </div>
             )}
 
@@ -840,19 +894,12 @@ const Account = () => {
               >
                 Cancel
               </button>
-              {selectedType && walletBalance >= selectedType.minDeposit ? (
+              {selectedType && (
                 <button
                   onClick={handleCreateAccount}
                   className="flex-1 bg-accent-green text-black font-medium py-3 rounded-lg hover:bg-accent-green/90 transition-colors"
                 >
                   Create Account
-                </button>
-              ) : (
-                <button
-                  onClick={() => navigate('/wallet')}
-                  className="flex-1 bg-accent-green text-black font-medium py-3 rounded-lg hover:bg-accent-green/90 transition-colors"
-                >
-                  Deposit Funds
                 </button>
               )}
             </div>
@@ -1170,6 +1217,142 @@ const Account = () => {
         </div>
       )}
 
+      {/* Account to Account Transfer Modal */}
+      {showAccountTransferModal && selectedAccount && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-white font-semibold text-lg">Transfer Between Accounts</h3>
+              <button 
+                onClick={() => {
+                  setShowAccountTransferModal(false)
+                  setTransferAmount('')
+                  setTransferPin(['', '', '', ''])
+                  setTargetAccount(null)
+                  setError('')
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* From Account */}
+            <div className="p-3 bg-dark-700 rounded-lg mb-4">
+              <p className="text-gray-400 text-xs mb-1">From Account</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={16} className="text-blue-500" />
+                  <span className="text-white font-medium">{selectedAccount.accountId}</span>
+                </div>
+                <span className="text-white">${selectedAccount.balance.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* To Account Selection */}
+            <div className="mb-4">
+              <label className="block text-gray-400 text-sm mb-2">To Account</label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {userAccounts
+                  .filter(acc => acc._id !== selectedAccount._id && acc.status === 'Active')
+                  .map(acc => (
+                    <button
+                      key={acc._id}
+                      onClick={() => setTargetAccount(acc)}
+                      className={`w-full p-3 rounded-lg border flex items-center justify-between ${
+                        targetAccount?._id === acc._id
+                          ? 'border-blue-500 bg-blue-500/10'
+                          : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <TrendingUp size={14} className="text-gray-400" />
+                        <span className="text-white text-sm">{acc.accountId}</span>
+                        <span className="text-gray-500 text-xs">({acc.accountTypeId?.name})</span>
+                      </div>
+                      <span className="text-gray-400 text-sm">${acc.balance.toLocaleString()}</span>
+                    </button>
+                  ))}
+                {userAccounts.filter(acc => acc._id !== selectedAccount._id && acc.status === 'Active').length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-2">No other accounts available</p>
+                )}
+              </div>
+            </div>
+
+            {/* Amount */}
+            <div className="mb-4">
+              <label className="block text-gray-400 text-sm mb-2">Transfer Amount</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={transferAmount}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/[^0-9.]/g, '')
+                  setTransferAmount(value)
+                }}
+                placeholder="Enter amount"
+                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+              <button 
+                type="button"
+                onClick={() => setTransferAmount(selectedAccount.balance.toString())}
+                className="text-blue-400 text-xs hover:underline mt-2"
+              >
+                Max: ${selectedAccount.balance.toLocaleString()}
+              </button>
+            </div>
+
+            {/* PIN */}
+            {pinSecurityEnabled && (
+              <div className="mb-6">
+                <label className="block text-gray-400 text-sm mb-3">Enter Source Account PIN</label>
+                <div className="flex gap-3 justify-center">
+                  {transferPin.map((digit, index) => (
+                    <input
+                      key={`acctransfer-${index}`}
+                      id={`acctransferpin-${index}`}
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handlePinChange(index, e.target.value, transferPin, setTransferPin, 'acctransferpin')}
+                      onKeyDown={(e) => handlePinKeyDown(e, index, transferPin, setTransferPin, 'acctransferpin')}
+                      onFocus={handlePinFocus}
+                      autoFocus={index === 0}
+                      className="w-12 h-12 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-xl focus:outline-none focus:border-blue-500"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAccountTransferModal(false)
+                  setTransferAmount('')
+                  setTransferPin(['', '', '', ''])
+                  setTargetAccount(null)
+                  setError('')
+                }}
+                className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAccountToAccountTransfer}
+                disabled={!targetAccount}
+                className="flex-1 bg-blue-500 text-white font-medium py-3 rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Transfer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Challenge Rules Modal */}
       {showRulesModal && selectedChallengeAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1273,7 +1456,11 @@ const Account = () => {
                 <button
                   onClick={() => {
                     setShowRulesModal(false)
-                    navigate(`/trade/${selectedChallengeAccount._id}?type=challenge`)
+                    if (isMobile) {
+                      navigate(`/mobile?account=${selectedChallengeAccount._id}`)
+                    } else {
+                      navigate(`/trade/${selectedChallengeAccount._id}?type=challenge`)
+                    }
                   }}
                   className="flex-1 py-3 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2"
                 >

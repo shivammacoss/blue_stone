@@ -86,10 +86,10 @@ router.get('/ticket/:ticketId', async (req, res) => {
 router.post('/reply/:ticketId', async (req, res) => {
   try {
     const { ticketId } = req.params
-    const { senderId, senderType, message } = req.body
+    const { senderId, senderType, senderName, message } = req.body
 
-    if (!senderId || !message) {
-      return res.status(400).json({ success: false, message: 'Sender ID and message are required' })
+    if (!message) {
+      return res.status(400).json({ success: false, message: 'Message is required' })
     }
 
     const ticket = await SupportTicket.findOne({ ticketId })
@@ -97,15 +97,30 @@ router.post('/reply/:ticketId', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Ticket not found' })
     }
 
-    const user = await User.findById(senderId)
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' })
+    let finalSenderName = senderName || 'Support'
+    let finalSenderId = senderId
+
+    // For user replies, validate the user exists
+    if (senderType !== 'ADMIN') {
+      if (!senderId) {
+        return res.status(400).json({ success: false, message: 'Sender ID is required for user replies' })
+      }
+      const user = await User.findById(senderId)
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' })
+      }
+      finalSenderName = user.firstName || 'User'
+      finalSenderId = senderId
+    } else {
+      // For admin replies, use provided name or default
+      finalSenderName = senderName || 'Support Team'
+      finalSenderId = senderId || ticket.userId // Use ticket user ID as fallback for reference
     }
 
     ticket.messages.push({
       sender: senderType || 'USER',
-      senderId,
-      senderName: user.firstName,
+      senderId: finalSenderId,
+      senderName: finalSenderName,
       message
     })
 
@@ -120,10 +135,14 @@ router.post('/reply/:ticketId', async (req, res) => {
 
     await ticket.save()
 
+    // Re-fetch with populated fields
+    const updatedTicket = await SupportTicket.findOne({ ticketId })
+      .populate('userId', 'firstName lastName email')
+
     res.json({
       success: true,
       message: 'Reply added successfully',
-      ticket
+      ticket: updatedTicket
     })
   } catch (error) {
     console.error('Error adding reply:', error)

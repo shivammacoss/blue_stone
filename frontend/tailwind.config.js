@@ -8,15 +8,27 @@ export default {
     extend: {
       colors: {
         dark: {
-          900: '#0a0a0a',
-          800: '#111111',
-          700: '#1a1a1a',
-          600: '#222222',
+          900: 'var(--theme-bgPrimary, #0a0a0a)',
+          800: 'var(--theme-bgSecondary, #111111)',
+          700: 'var(--theme-bgCard, #1a1a1a)',
+          600: 'var(--theme-bgHover, #222222)',
           500: '#2a2a2a',
         },
         accent: {
-          green: '#00d4aa',
-          orange: '#ff6b35',
+          green: 'var(--theme-primary, #00d4aa)',
+          orange: 'var(--theme-accent, #ff6b35)',
+        },
+        theme: {
+          primary: 'var(--theme-primary, #3B82F6)',
+          secondary: 'var(--theme-secondary, #10B981)',
+          accent: 'var(--theme-accent, #F59E0B)',
+          success: 'var(--theme-success, #10B981)',
+          error: 'var(--theme-error, #EF4444)',
+          warning: 'var(--theme-warning, #F59E0B)',
+          buy: 'var(--theme-buyColor, #3B82F6)',
+          sell: 'var(--theme-sellColor, #EF4444)',
+          profit: 'var(--theme-profitColor, #10B981)',
+          loss: 'var(--theme-lossColor, #EF4444)',
         }
       },
       animation: {

@@ -13,9 +13,9 @@ router.get('/user/:userId', async (req, res) => {
     const accounts = await TradingAccount.find({ userId: req.params.userId })
       .populate('accountTypeId', 'name description')
       .sort({ createdAt: -1 })
-    res.json({ accounts })
+    res.json({ success: true, accounts })
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching accounts', error: error.message })
+    res.status(500).json({ success: false, message: 'Error fetching accounts', error: error.message })
   }
 })
 
@@ -48,37 +48,26 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Invalid or inactive account type' })
     }
 
-    // Get or create wallet
+    // Get or create wallet (no balance check needed - accounts open with zero balance)
     let wallet = await Wallet.findOne({ userId })
     if (!wallet) {
       wallet = new Wallet({ userId, balance: 0 })
       await wallet.save()
     }
 
-    // Check wallet balance
-    if (wallet.balance < accountType.minDeposit) {
-      return res.status(400).json({ 
-        message: `Insufficient wallet balance. Minimum deposit required: $${accountType.minDeposit}` 
-      })
-    }
-
     // Generate unique account ID
     const accountId = await TradingAccount.generateAccountId()
 
-    // Create trading account
+    // Create trading account with ZERO balance - user must deposit separately
     const tradingAccount = new TradingAccount({
       userId,
       accountTypeId,
       accountId,
       pin,
-      balance: accountType.minDeposit,
+      balance: 0, // Start with zero balance - no auto fund
       leverage: accountType.leverage,
       exposureLimit: accountType.exposureLimit
     })
-
-    // Deduct from wallet
-    wallet.balance -= accountType.minDeposit
-    await wallet.save()
 
     await tradingAccount.save()
 
@@ -281,6 +270,115 @@ router.post('/:id/transfer', async (req, res) => {
       return res.status(400).json({ message: 'Invalid transfer direction' })
     }
   } catch (error) {
+    res.status(500).json({ message: 'Error transferring funds', error: error.message })
+  }
+})
+
+// POST /api/trading-accounts/account-transfer - Transfer between trading accounts
+router.post('/account-transfer', async (req, res) => {
+  try {
+    const { userId, fromAccountId, toAccountId, amount, pin, skipPinVerification } = req.body
+
+    if (!fromAccountId || !toAccountId) {
+      return res.status(400).json({ message: 'Both source and target accounts are required' })
+    }
+
+    if (fromAccountId === toAccountId) {
+      return res.status(400).json({ message: 'Cannot transfer to the same account' })
+    }
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Invalid transfer amount' })
+    }
+
+    // Get source account
+    const fromAccount = await TradingAccount.findById(fromAccountId)
+    if (!fromAccount) {
+      return res.status(404).json({ message: 'Source account not found' })
+    }
+
+    // Verify ownership
+    if (fromAccount.userId.toString() !== userId) {
+      return res.status(403).json({ message: 'Unauthorized access to source account' })
+    }
+
+    // Verify PIN if required
+    if (!skipPinVerification) {
+      const isPinValid = await bcrypt.compare(pin, fromAccount.pin)
+      if (!isPinValid) {
+        return res.status(401).json({ message: 'Invalid PIN' })
+      }
+    }
+
+    // Check source account status and balance
+    if (fromAccount.status !== 'Active') {
+      return res.status(400).json({ message: 'Source account is not active' })
+    }
+
+    if (fromAccount.balance < amount) {
+      return res.status(400).json({ message: 'Insufficient balance in source account' })
+    }
+
+    // Get target account
+    const toAccount = await TradingAccount.findById(toAccountId)
+    if (!toAccount) {
+      return res.status(404).json({ message: 'Target account not found' })
+    }
+
+    // Verify target account ownership
+    if (toAccount.userId.toString() !== userId) {
+      return res.status(403).json({ message: 'Unauthorized access to target account' })
+    }
+
+    if (toAccount.status !== 'Active') {
+      return res.status(400).json({ message: 'Target account is not active' })
+    }
+
+    // Perform transfer
+    fromAccount.balance -= amount
+    toAccount.balance += amount
+
+    await fromAccount.save()
+    await toAccount.save()
+
+    // Log transaction for sender (debit)
+    await Transaction.create({
+      userId,
+      type: 'Account_Transfer_Out',
+      amount,
+      paymentMethod: 'Internal',
+      tradingAccountId: fromAccount._id,
+      tradingAccountName: fromAccount.accountId,
+      toTradingAccountId: toAccount._id,
+      toTradingAccountName: toAccount.accountId,
+      status: 'Completed',
+      transactionRef: `ACCTRF${Date.now()}`
+    })
+
+    // Log transaction for receiver (credit)
+    await Transaction.create({
+      userId,
+      type: 'Account_Transfer_In',
+      amount,
+      paymentMethod: 'Internal',
+      tradingAccountId: toAccount._id,
+      tradingAccountName: toAccount.accountId,
+      fromTradingAccountId: fromAccount._id,
+      fromTradingAccountName: fromAccount.accountId,
+      status: 'Completed',
+      transactionRef: `ACCTRF${Date.now()}`
+    })
+
+    console.log(`[Account Transfer] ${fromAccount.accountId} -> ${toAccount.accountId}: $${amount}`)
+
+    res.json({
+      success: true,
+      message: `$${amount} transferred from ${fromAccount.accountId} to ${toAccount.accountId}`,
+      fromAccountBalance: fromAccount.balance,
+      toAccountBalance: toAccount.balance
+    })
+  } catch (error) {
+    console.error('Account transfer error:', error)
     res.status(500).json({ message: 'Error transferring funds', error: error.message })
   }
 })

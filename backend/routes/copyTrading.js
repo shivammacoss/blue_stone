@@ -322,7 +322,51 @@ router.get('/my-subscriptions/:userId', async (req, res) => {
       .populate('followerAccountId', 'accountId balance')
       .sort({ createdAt: -1 })
 
-    res.json({ subscriptions })
+    // Calculate actual profit/loss for each subscription from copy trades
+    const subscriptionsWithStats = await Promise.all(subscriptions.map(async (sub) => {
+      const subObj = sub.toObject()
+      
+      // Get all copy trades for this subscription
+      const copyTrades = await CopyTrade.find({
+        followerUserId: req.params.userId,
+        masterId: sub.masterId?._id
+      })
+
+      let totalProfit = 0
+      let totalLoss = 0
+      let totalCopiedTrades = copyTrades.length
+      let openTrades = 0
+      let closedTrades = 0
+
+      copyTrades.forEach(trade => {
+        if (trade.status === 'CLOSED') {
+          closedTrades++
+          const pnl = trade.followerPnl || 0
+          if (pnl >= 0) {
+            totalProfit += pnl
+          } else {
+            totalLoss += Math.abs(pnl)
+          }
+        } else if (trade.status === 'OPEN') {
+          openTrades++
+        }
+      })
+
+      // Update stats with actual calculated values
+      subObj.stats = {
+        ...subObj.stats,
+        totalCopiedTrades,
+        totalProfit,
+        totalLoss,
+        netPnl: totalProfit - totalLoss,
+        openTrades,
+        closedTrades
+      }
+
+      return subObj
+    }))
+
+    res.json({ subscriptions: subscriptionsWithStats })
   } catch (error) {
     res.status(500).json({ message: 'Error fetching subscriptions', error: error.message })
   }
