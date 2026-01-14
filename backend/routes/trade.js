@@ -23,6 +23,7 @@ router.post('/open', async (req, res) => {
       quantity, 
       bid, 
       ask, 
+      leverage,
       sl, 
       tp 
     } = req.body
@@ -132,7 +133,8 @@ router.post('/open', async (req, res) => {
       parseFloat(bid),
       parseFloat(ask),
       sl ? parseFloat(sl) : null,
-      tp ? parseFloat(tp) : null
+      tp ? parseFloat(tp) : null,
+      leverage // Pass user-selected leverage
     )
 
     // Check if this is a master trader and copy to followers
@@ -237,18 +239,22 @@ router.post('/close', async (req, res) => {
 
     // Check if this was a master trade and close follower trades
     if (tradeToClose) {
+      console.log(`[CopyTrade] Checking if trade ${tradeId} belongs to a master. TradingAccountId: ${tradeToClose.tradingAccountId}`)
       const master = await MasterTrader.findOne({ 
         tradingAccountId: tradeToClose.tradingAccountId, 
         status: 'ACTIVE' 
       })
       
+      console.log(`[CopyTrade] Master found: ${master ? master._id : 'NO MASTER FOUND'}`)
+      
       if (master) {
         try {
           const closePrice = tradeToClose.side === 'BUY' ? parseFloat(bid) : parseFloat(ask)
-          await copyTradingEngine.closeFollowerTrades(tradeId, closePrice)
-          console.log(`Closed follower trades for master trade ${tradeId}`)
+          console.log(`[CopyTrade] Calling closeFollowerTrades for master trade ${tradeId} at price ${closePrice}`)
+          const copyResults = await copyTradingEngine.closeFollowerTrades(tradeId, closePrice)
+          console.log(`[CopyTrade] Closed ${copyResults.length} follower trades for master trade ${tradeId}`)
         } catch (copyError) {
-          console.error('Error closing follower trades:', copyError)
+          console.error('[CopyTrade] Error closing follower trades:', copyError)
         }
       }
     }

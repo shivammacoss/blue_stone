@@ -12,9 +12,39 @@ export const useTheme = () => {
   return context
 }
 
+// Dark mode colors
+const darkColors = {
+  bgPrimary: '#000000',
+  bgSecondary: '#0D0D0D',
+  bgCard: '#1A1A1A',
+  bgHover: '#262626',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#9CA3AF',
+  textMuted: '#6B7280',
+  border: '#374151',
+  borderLight: '#4B5563',
+}
+
+// Light mode colors
+const lightColors = {
+  bgPrimary: '#F9FAFB',
+  bgSecondary: '#FFFFFF',
+  bgCard: '#FFFFFF',
+  bgHover: '#F3F4F6',
+  textPrimary: '#111827',
+  textSecondary: '#4B5563',
+  textMuted: '#9CA3AF',
+  border: '#E5E7EB',
+  borderLight: '#D1D5DB',
+}
+
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode')
+    return saved !== null ? JSON.parse(saved) : true // Default to dark mode
+  })
 
   const fetchTheme = async () => {
     try {
@@ -60,6 +90,29 @@ export const ThemeProvider = ({ children }) => {
     root.style.setProperty('--color-loss', colors.lossColor || '#EF4444')
   }
 
+  // Apply dark/light mode classes
+  useEffect(() => {
+    const root = document.documentElement
+    const modeColors = isDarkMode ? darkColors : lightColors
+    
+    // Apply mode-specific colors
+    Object.entries(modeColors).forEach(([key, value]) => {
+      root.style.setProperty(`--${key}`, value)
+    })
+    
+    // Toggle dark class on html element
+    if (isDarkMode) {
+      root.classList.add('dark')
+      root.classList.remove('light')
+    } else {
+      root.classList.add('light')
+      root.classList.remove('dark')
+    }
+    
+    // Save preference
+    localStorage.setItem('darkMode', JSON.stringify(isDarkMode))
+  }, [isDarkMode])
+
   useEffect(() => {
     fetchTheme()
     
@@ -72,8 +125,25 @@ export const ThemeProvider = ({ children }) => {
     fetchTheme()
   }
 
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => !prev)
+  }
+
+  // Get current mode colors
+  const modeColors = isDarkMode ? darkColors : lightColors
+
   return (
-    <ThemeContext.Provider value={{ theme, loading, refreshTheme, applyTheme }}>
+    <ThemeContext.Provider value={{ 
+      theme, 
+      loading, 
+      refreshTheme, 
+      applyTheme, 
+      isDarkMode, 
+      toggleDarkMode,
+      modeColors,
+      darkColors,
+      lightColors
+    }}>
       {children}
     </ThemeContext.Provider>
   )

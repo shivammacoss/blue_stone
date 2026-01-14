@@ -196,7 +196,7 @@ class TradeEngine {
   }
 
   // Open a new trade
-  async openTrade(userId, tradingAccountId, symbol, segment, side, orderType, quantity, bid, ask, sl = null, tp = null) {
+  async openTrade(userId, tradingAccountId, symbol, segment, side, orderType, quantity, bid, ask, sl = null, tp = null, userLeverage = null) {
     const account = await TradingAccount.findById(tradingAccountId).populate('accountTypeId')
     if (!account) throw new Error('Trading account not found')
 
@@ -212,6 +212,7 @@ class TradeEngine {
 
     // Get charges for this trade
     const charges = await Charges.getChargesForTrade(userId, symbol, segment, account.accountTypeId?._id)
+    console.log(`Charges retrieved: spread=${charges.spreadValue}, commission=${charges.commissionValue}, commissionType=${charges.commissionType}`)
 
     // Calculate execution price with spread
     const openPrice = this.calculateExecutionPrice(side, bid, ask, charges.spreadValue, charges.spreadType)
@@ -219,8 +220,18 @@ class TradeEngine {
     // Get contract size based on symbol
     const contractSize = this.getContractSize(symbol)
 
-    // Calculate margin BEFORE validation
-    const leverage = account.leverage
+    // Use user-selected leverage if provided, otherwise use account's leverage
+    // User can select any leverage up to account's max leverage
+    const accountMaxLeverage = parseInt(account.leverage.toString().replace('1:', '')) || 100
+    let selectedLeverage = accountMaxLeverage
+    
+    if (userLeverage) {
+      const userLeverageNum = parseInt(userLeverage.toString().replace('1:', '')) || accountMaxLeverage
+      // User can only use leverage up to account's max
+      selectedLeverage = Math.min(userLeverageNum, accountMaxLeverage)
+    }
+    
+    const leverage = `1:${selectedLeverage}`
     const marginRequired = this.calculateMargin(quantity, openPrice, leverage, contractSize)
     
     // Log for debugging
@@ -234,8 +245,15 @@ class TradeEngine {
     
     console.log(`Trade validated: Free Margin: $${validation.freeMargin}, Equity: $${validation.equity}`)
 
-    // Calculate commission
-    const commission = this.calculateCommission(quantity, openPrice, charges.commissionType, charges.commissionValue, contractSize)
+    // Calculate commission based on side and commission settings
+    let commission = 0
+    const shouldChargeCommission = (side === 'BUY' && charges.commissionOnBuy !== false) || 
+                                   (side === 'SELL' && charges.commissionOnSell !== false)
+    
+    if (shouldChargeCommission && charges.commissionValue > 0) {
+      commission = this.calculateCommission(quantity, openPrice, charges.commissionType, charges.commissionValue, contractSize)
+    }
+    console.log(`Commission calculated: $${commission} (side=${side}, commissionOnBuy=${charges.commissionOnBuy}, commissionOnSell=${charges.commissionOnSell})`)
 
     // Generate trade ID
     const tradeId = await Trade.generateTradeId()
@@ -276,15 +294,30 @@ class TradeEngine {
 
   // Close a trade
   async closeTrade(tradeId, currentBid, currentAsk, closedBy = 'USER', adminId = null) {
-    const trade = await Trade.findById(tradeId)
+    const trade = await Trade.findById(tradeId).populate({ path: 'tradingAccountId', populate: { path: 'accountTypeId' } })
     if (!trade) throw new Error('Trade not found')
     if (trade.status !== 'OPEN') throw new Error('Trade is not open')
 
     const closePrice = trade.side === 'BUY' ? currentBid : currentAsk
     
-    // Calculate final PnL (commission already deducted on open, only subtract swap)
+    // Get charges to check if commission on close is enabled
+    const charges = await Charges.getChargesForTrade(
+      trade.userId, 
+      trade.symbol, 
+      trade.segment, 
+      trade.tradingAccountId?.accountTypeId?._id
+    )
+    
+    // Calculate commission on close if enabled
+    let closeCommission = 0
+    if (charges.commissionOnClose && charges.commissionValue > 0) {
+      closeCommission = this.calculateCommission(trade.quantity, closePrice, charges.commissionType, charges.commissionValue, trade.contractSize)
+      console.log(`Commission on close: $${closeCommission}`)
+    }
+    
+    // Calculate final PnL (commission already deducted on open, subtract swap and close commission)
     const rawPnl = this.calculatePnl(trade.side, trade.openPrice, closePrice, trade.quantity, trade.contractSize)
-    const realizedPnl = rawPnl - trade.swap
+    const realizedPnl = rawPnl - trade.swap - closeCommission
 
     // Update trade
     trade.closePrice = closePrice

@@ -102,11 +102,17 @@ const Signup = () => {
     setError('')
     
     try {
-      const response = await signup(formData)
+      // Include referral code in signup data
+      const signupData = {
+        ...formData,
+        referralCode: referralCode || undefined
+      }
+      
+      const response = await signup(signupData)
       localStorage.setItem('token', response.token)
       localStorage.setItem('user', JSON.stringify(response.user))
       
-      // Register referral if referral code exists
+      // Also call register-referral API for backward compatibility
       if (referralCode && response.user?._id) {
         try {
           await fetch(`${API_URL}/ib/register-referral`, {

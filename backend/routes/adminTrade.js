@@ -6,6 +6,8 @@ import Charges from '../models/Charges.js'
 import TradeSettings from '../models/TradeSettings.js'
 import AdminLog from '../models/AdminLog.js'
 import tradeEngine from '../services/tradeEngine.js'
+import copyTradingEngine from '../services/copyTradingEngine.js'
+import MasterTrader from '../models/MasterTrader.js'
 
 const router = express.Router()
 
@@ -83,7 +85,6 @@ router.post('/create', async (req, res) => {
       floatingPnl: 0,
       status: 'OPEN',
       adminModified: true,
-      adminModifiedBy: 'admin',
       adminModifiedAt: new Date()
     })
 
@@ -232,7 +233,7 @@ router.put('/edit/:tradeId', async (req, res) => {
 router.post('/close/:tradeId', async (req, res) => {
   try {
     const { tradeId } = req.params
-    const { closePrice } = req.body
+    const { closePrice, marketPrice } = req.body
 
     const trade = await Trade.findById(tradeId)
     if (!trade) {
@@ -243,7 +244,8 @@ router.post('/close/:tradeId', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Trade is not open' })
     }
 
-    const finalClosePrice = closePrice || trade.openPrice
+    // Use closePrice if provided, otherwise use marketPrice, fallback to openPrice
+    const finalClosePrice = closePrice || marketPrice || trade.openPrice
 
     // Calculate PnL
     const rawPnl = trade.side === 'BUY'
@@ -270,7 +272,22 @@ router.post('/close/:tradeId', async (req, res) => {
       await account.save()
     }
 
-    res.json({ success: true, message: 'Trade closed', trade, realizedPnl })
+    // Check if this is a master trader's trade and close follower trades
+    let followerResults = []
+    const master = await MasterTrader.findOne({ tradingAccountId: trade.tradingAccountId, status: 'APPROVED' })
+    if (master) {
+      console.log(`[AdminTrade] Master trade closed, propagating to followers. TradeId: ${tradeId}, ClosePrice: ${finalClosePrice}`)
+      followerResults = await copyTradingEngine.closeFollowerTrades(trade._id, finalClosePrice)
+      console.log(`[AdminTrade] Closed ${followerResults.length} follower trades`)
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Trade closed', 
+      trade, 
+      realizedPnl,
+      followersClosed: followerResults.length 
+    })
   } catch (error) {
     console.error('Error closing trade:', error)
     res.status(500).json({ success: false, message: error.message })

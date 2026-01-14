@@ -400,39 +400,40 @@ router.post('/admin/transfer-referrals', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Target IB not specified' })
     }
 
-    // Find the target IB user
-    const targetIB = await User.findById(targetIBId)
-    if (!targetIB) {
+    // Find the target IB user record
+    const targetIBUser = await IBUser.findById(targetIBId).populate('userId', 'email')
+    if (!targetIBUser) {
       return res.status(404).json({ success: false, message: 'Target IB not found' })
     }
 
     // Verify target is an active IB
-    if (targetIB.ibStatus !== 'ACTIVE') {
-      return res.status(400).json({ success: false, message: 'Target user is not an active IB' })
+    if (targetIBUser.status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Target IB is not active' })
     }
 
     let transferredCount = 0
 
-    // Update each user's referredBy field
+    // Update each user's referral record
     for (const userId of userIds) {
       try {
         // Update user's referredBy to point to new IB
         await User.findByIdAndUpdate(userId, { 
-          referredBy: targetIBId,
-          referralCode: targetIB.referralCode
+          referredBy: targetIBUser.userId,
+          referralCode: targetIBUser.referralCode
         })
 
-        // Update or create IBReferral record
+        // Update or create IBReferral record - use correct field name referredByIBId
         const existingReferral = await IBReferral.findOne({ userId })
         if (existingReferral) {
-          existingReferral.ibUserId = targetIBId
-          existingReferral.referralCode = targetIB.referralCode
+          existingReferral.referredByIBId = targetIBUser._id
+          existingReferral.referralCode = targetIBUser.referralCode
           await existingReferral.save()
         } else {
           await IBReferral.create({
-            ibUserId: targetIBId,
+            referredByIBId: targetIBUser._id,
             userId,
-            referralCode: targetIB.referralCode
+            referralCode: targetIBUser.referralCode,
+            level: 1
           })
         }
 
@@ -442,7 +443,7 @@ router.post('/admin/transfer-referrals', async (req, res) => {
       }
     }
 
-    console.log(`[Admin] Transferred ${transferredCount} users to IB ${targetIB.email}`)
+    console.log(`[Admin] Transferred ${transferredCount} users to IB ${targetIBUser.referralCode}`)
 
     res.json({ 
       success: true, 

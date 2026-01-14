@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import MobileTradingApp from './pages/MobileTradingApp'
 import Account from './pages/Account'
 import WalletPage from './pages/WalletPage'
+import OrderBook from './pages/OrderBook'
 import TradingPage from './pages/TradingPage'
 import CopyTradePage from './pages/CopyTradePage'
 import IBPage from './pages/IBPage'
@@ -50,6 +51,7 @@ function App() {
         <Route path="/mobile" element={<MobileTradingApp />} />
         <Route path="/account" element={<Account />} />
         <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/orders" element={<OrderBook />} />
         <Route path="/trade/:accountId" element={<TradingPage />} />
         <Route path="/copytrade" element={<CopyTradePage />} />
         <Route path="/ib" element={<IBPage />} />

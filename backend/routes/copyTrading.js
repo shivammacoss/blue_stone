@@ -197,8 +197,8 @@ router.post('/follow', async (req, res) => {
     }
 
     // Validate copy settings
-    if (!['FIXED_LOT', 'LOT_MULTIPLIER'].includes(copyMode)) {
-      return res.status(400).json({ message: 'Invalid copy mode' })
+    if (!['FIXED_LOT', 'BALANCE_BASED', 'EQUITY_BASED', 'MULTIPLIER', 'LOT_MULTIPLIER', 'AUTO'].includes(copyMode)) {
+      return res.status(400).json({ message: 'Invalid copy mode. Use FIXED_LOT, BALANCE_BASED, EQUITY_BASED, MULTIPLIER, or AUTO' })
     }
 
     if (copyValue < settings.copyLimits.minCopyLotSize) {
@@ -274,6 +274,7 @@ router.put('/follow/:id/resume', async (req, res) => {
 
     follower.status = 'ACTIVE'
     follower.pausedAt = null
+    follower.stoppedAt = null
     await follower.save()
 
     // Update master stats
@@ -311,6 +312,91 @@ router.put('/follow/:id/stop', async (req, res) => {
     res.json({ message: 'Following stopped', follower })
   } catch (error) {
     res.status(500).json({ message: 'Error stopping follow', error: error.message })
+  }
+})
+
+// PUT /api/copy/follow/:id/update - Update subscription settings (account, copy mode, etc.)
+router.put('/follow/:id/update', async (req, res) => {
+  try {
+    const { followerAccountId, copyMode, copyValue } = req.body
+    const follower = await CopyFollower.findById(req.params.id)
+    
+    if (!follower) {
+      return res.status(404).json({ message: 'Subscription not found' })
+    }
+
+    // Update fields if provided
+    if (followerAccountId) {
+      // Validate the new account belongs to the same user
+      const account = await TradingAccount.findById(followerAccountId)
+      if (!account || account.userId.toString() !== follower.followerId.toString()) {
+        return res.status(400).json({ message: 'Invalid trading account' })
+      }
+      follower.followerAccountId = followerAccountId
+    }
+
+    if (copyMode) {
+      if (!['FIXED_LOT', 'BALANCE_BASED', 'EQUITY_BASED', 'MULTIPLIER', 'LOT_MULTIPLIER', 'AUTO'].includes(copyMode)) {
+        return res.status(400).json({ message: 'Invalid copy mode' })
+      }
+      follower.copyMode = copyMode
+    }
+
+    if (copyValue !== undefined) {
+      const mode = copyMode || follower.copyMode
+      if (mode === 'FIXED_LOT') {
+        follower.fixedLotSize = parseFloat(copyValue)
+        follower.copyValue = parseFloat(copyValue)
+      } else if (mode === 'MULTIPLIER' || mode === 'LOT_MULTIPLIER') {
+        follower.multiplier = parseFloat(copyValue)
+        follower.copyValue = parseFloat(copyValue)
+      } else {
+        // BALANCE_BASED, EQUITY_BASED - copyValue is maxLotSize
+        follower.maxLotSize = parseFloat(copyValue)
+        follower.copyValue = parseFloat(copyValue)
+      }
+    }
+
+    await follower.save()
+
+    res.json({ 
+      success: true, 
+      message: 'Subscription updated successfully', 
+      follower 
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating subscription', error: error.message })
+  }
+})
+
+// DELETE /api/copy/follow/:id/unfollow - Completely unfollow a master
+router.delete('/follow/:id/unfollow', async (req, res) => {
+  try {
+    const follower = await CopyFollower.findById(req.params.id)
+    
+    if (!follower) {
+      return res.status(404).json({ message: 'Subscription not found' })
+    }
+
+    const masterId = follower.masterId
+
+    // Delete the follower record
+    await CopyFollower.findByIdAndDelete(req.params.id)
+
+    // Update master stats
+    const master = await MasterTrader.findById(masterId)
+    if (master) {
+      master.stats.totalFollowers = Math.max(0, (master.stats.totalFollowers || 1) - 1)
+      master.stats.activeFollowers = Math.max(0, (master.stats.activeFollowers || 1) - 1)
+      await master.save()
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Successfully unfollowed master' 
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error unfollowing', error: error.message })
   }
 })
 

@@ -25,14 +25,18 @@ import {
   ArrowUpRight,
   Trophy,
   ArrowLeft,
-  Home
+  Home,
+  Sun,
+  Moon
 } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
 const Account = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const [showFailModal, setShowFailModal] = useState(false)
   const [failReason, setFailReason] = useState('')
   const [activeMenu, setActiveMenu] = useState('Account')
@@ -53,6 +57,9 @@ const Account = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showRulesModal, setShowRulesModal] = useState(false)
   const [selectedChallengeAccount, setSelectedChallengeAccount] = useState(null)
+  const [showAccountMenu, setShowAccountMenu] = useState(null)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
   const [pinSecurityEnabled, setPinSecurityEnabled] = useState(() => {
     const saved = localStorage.getItem('pinSecurityEnabled')
     return saved !== null ? JSON.parse(saved) : true
@@ -67,6 +74,7 @@ const Account = () => {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [createAccountTab, setCreateAccountTab] = useState('live')
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -81,6 +89,7 @@ const Account = () => {
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Account', icon: User, path: '/account' },
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Orders', icon: FileText, path: '/orders' },
     { name: 'IB', icon: Users, path: '/ib' },
     { name: 'Copytrade', icon: Copy, path: '/copytrade' },
     { name: 'Profile', icon: UserCircle, path: '/profile' },
@@ -234,12 +243,6 @@ const Account = () => {
       setError('Please select an account type')
       return
     }
-    
-    const pinValue = pin.join('')
-    if (pinValue.length !== 4) {
-      setError('Please enter a 4-digit PIN')
-      return
-    }
 
     if (!user._id) {
       setError('Please login to create an account')
@@ -253,7 +256,7 @@ const Account = () => {
         body: JSON.stringify({
           userId: user._id,
           accountTypeId: selectedType._id,
-          pin: pinValue
+          pin: '0000' // Default PIN - not used anymore
         })
       })
       const data = await res.json()
@@ -317,18 +320,103 @@ const Account = () => {
     setTimeout(() => setSuccess(''), 3000)
   }
 
+  const handleArchiveAccount = async (accountId) => {
+    try {
+      const res = await fetch(`${API_URL}/trading-accounts/${accountId}/archive`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        setSuccess('Account archived successfully!')
+        setShowArchiveConfirm(null)
+        fetchUserAccounts()
+        setTimeout(() => setSuccess(''), 3000)
+      } else {
+        setError(data.message || 'Failed to archive account')
+      }
+    } catch (error) {
+      console.error('Archive error:', error)
+      setError('Error archiving account')
+    }
+  }
+
+  const handleUnarchiveAccount = async (accountId) => {
+    try {
+      const res = await fetch(`${API_URL}/trading-accounts/${accountId}/unarchive`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        setSuccess('Account restored successfully!')
+        fetchUserAccounts()
+        setTimeout(() => setSuccess(''), 3000)
+      } else {
+        setError(data.message || 'Failed to restore account')
+      }
+    } catch (error) {
+      console.error('Unarchive error:', error)
+      setError('Error restoring account')
+    }
+  }
+
+  const handleDeleteAccount = async (accountId) => {
+    try {
+      const res = await fetch(`${API_URL}/trading-accounts/${accountId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        setSuccess('Account deleted permanently!')
+        setShowDeleteConfirm(null)
+        fetchUserAccounts()
+        setTimeout(() => setSuccess(''), 3000)
+      } else {
+        setError(data.message || 'Failed to delete account')
+      }
+    } catch (error) {
+      console.error('Delete error:', error)
+      setError('Error deleting account')
+    }
+  }
+
+  const handleResetDemo = async (accountId) => {
+    if (!confirm('Are you sure you want to reset this demo account? All open trades will be closed and balance will be reset.')) {
+      return
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/trading-accounts/${accountId}/reset-demo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        setSuccess(data.message || 'Demo account reset successfully!')
+        fetchUserAccounts()
+        setTimeout(() => setSuccess(''), 3000)
+      } else {
+        setError(data.message || 'Failed to reset demo account')
+      }
+    } catch (error) {
+      console.error('Demo reset error:', error)
+      setError('Error resetting demo account')
+    }
+  }
+
   const handleTransferFunds = async () => {
-    const pinValue = transferPin.join('')
     if (!transferAmount || parseFloat(transferAmount) <= 0) {
       setError('Please enter a valid amount')
       return
     }
     if (parseFloat(transferAmount) > walletBalance) {
       setError('Insufficient wallet balance')
-      return
-    }
-    if (pinSecurityEnabled && pinValue.length !== 4) {
-      setError('Please enter your 4-digit PIN')
       return
     }
 
@@ -339,9 +427,8 @@ const Account = () => {
         body: JSON.stringify({
           userId: user._id,
           amount: parseFloat(transferAmount),
-          pin: pinSecurityEnabled ? pinValue : '0000',
           direction: 'deposit',
-          skipPinVerification: !pinSecurityEnabled
+          skipPinVerification: true
         })
       })
       const data = await res.json()
@@ -365,17 +452,12 @@ const Account = () => {
   }
 
   const handleWithdrawFromAccount = async () => {
-    const pinValue = transferPin.join('')
     if (!transferAmount || parseFloat(transferAmount) <= 0) {
       setError('Please enter a valid amount')
       return
     }
     if (parseFloat(transferAmount) > selectedAccount.balance) {
       setError('Insufficient account balance')
-      return
-    }
-    if (pinSecurityEnabled && pinValue.length !== 4) {
-      setError('Please enter your 4-digit PIN')
       return
     }
 
@@ -386,9 +468,8 @@ const Account = () => {
         body: JSON.stringify({
           userId: user._id,
           amount: parseFloat(transferAmount),
-          pin: pinSecurityEnabled ? pinValue : '0000',
           direction: 'withdraw',
-          skipPinVerification: !pinSecurityEnabled
+          skipPinVerification: true
         })
       })
       const data = await res.json()
@@ -412,7 +493,6 @@ const Account = () => {
   }
 
   const handleAccountToAccountTransfer = async () => {
-    const pinValue = transferPin.join('')
     if (!transferAmount || parseFloat(transferAmount) <= 0) {
       setError('Please enter a valid amount')
       return
@@ -425,10 +505,6 @@ const Account = () => {
       setError('Insufficient account balance')
       return
     }
-    if (pinSecurityEnabled && pinValue.length !== 4) {
-      setError('Please enter your 4-digit PIN')
-      return
-    }
 
     try {
       const res = await fetch(`${API_URL}/trading-accounts/account-transfer`, {
@@ -439,8 +515,7 @@ const Account = () => {
           fromAccountId: selectedAccount._id,
           toAccountId: targetAccount._id,
           amount: parseFloat(transferAmount),
-          pin: pinSecurityEnabled ? pinValue : '0000',
-          skipPinVerification: !pinSecurityEnabled
+          skipPinVerification: true
         })
       })
       const data = await res.json()
@@ -470,34 +545,40 @@ const Account = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dark-900 flex flex-col md:flex-row">
+    <div className={`h-screen flex flex-col md:flex-row transition-colors duration-300 ${isDarkMode ? 'bg-dark-900' : 'bg-gray-100'}`}>
       {/* Mobile Header */}
       {isMobile && (
-        <header className="fixed top-0 left-0 right-0 z-40 bg-dark-800 border-b border-gray-800 px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/mobile')} className="p-2 -ml-2 hover:bg-dark-700 rounded-lg">
-            <ArrowLeft size={22} className="text-white" />
+        <header className={`fixed top-0 left-0 right-0 z-40 px-4 py-3 flex items-center gap-4 ${isDarkMode ? 'bg-dark-800 border-b border-gray-800' : 'bg-white border-b border-gray-200'}`}>
+          <button onClick={() => navigate('/mobile')} className={`p-2 -ml-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
+            <ArrowLeft size={22} className={isDarkMode ? 'text-white' : 'text-gray-900'} />
           </button>
-          <h1 className="text-white font-semibold text-lg flex-1">Account</h1>
-          <button onClick={() => navigate('/mobile')} className="p-2 hover:bg-dark-700 rounded-lg">
+          <h1 className={`font-semibold text-lg flex-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Account</h1>
+          <button 
+            onClick={toggleDarkMode}
+            className={`p-2 rounded-lg ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          <button onClick={() => navigate('/mobile')} className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
             <Home size={20} className="text-gray-400" />
           </button>
         </header>
       )}
 
-      {/* Sidebar - Hidden on Mobile */}
+      {/* Sidebar - Hidden on Mobile, Fixed height with scroll for nav */}
       {!isMobile && (
         <aside 
-          className={`${sidebarExpanded ? 'w-48' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300 ease-in-out`}
+          className={`${sidebarExpanded ? 'w-48' : 'w-16'} ${isDarkMode ? 'bg-dark-900 border-gray-800' : 'bg-white border-gray-200'} border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ease-in-out`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
-          <div className="p-4 flex items-center justify-center">
+          <div className="p-4 flex items-center justify-center shrink-0">
             <div className="w-8 h-8 bg-accent-green rounded flex items-center justify-center">
-              <span className="text-black font-bold text-sm">⟨X</span>
+              <span className="text-black font-bold text-sm">CL</span>
             </div>
           </div>
 
-          <nav className="flex-1 px-2">
+          <nav className="flex-1 px-2 overflow-y-auto">
             {menuItems.map((item) => (
               <button
                 key={item.name}
@@ -505,7 +586,7 @@ const Account = () => {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
                   activeMenu === item.name 
                     ? 'bg-accent-green text-black' 
-                    : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                    : isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
                 title={!sidebarExpanded ? item.name : ''}
               >
@@ -515,10 +596,18 @@ const Account = () => {
             ))}
           </nav>
 
-          <div className="p-2 border-t border-gray-800">
+          <div className={`p-2 border-t shrink-0 ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <button 
+              onClick={toggleDarkMode}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}
+              title={!sidebarExpanded ? (isDarkMode ? 'Light Mode' : 'Dark Mode') : ''}
+            >
+              {isDarkMode ? <Sun size={18} className="flex-shrink-0" /> : <Moon size={18} className="flex-shrink-0" />}
+              {sidebarExpanded && <span className="text-sm font-medium whitespace-nowrap">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+            </button>
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white transition-colors rounded-lg"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors rounded-lg ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
               title={!sidebarExpanded ? 'Log Out' : ''}
             >
               <LogOut size={18} className="flex-shrink-0" />
@@ -528,8 +617,8 @@ const Account = () => {
         </aside>
       )}
 
-      {/* Main Content */}
-      <main className={`flex-1 overflow-auto ${isMobile ? 'pt-14' : ''}`}>
+      {/* Main Content - Scrollable */}
+      <main className={`flex-1 overflow-y-auto ${isMobile ? 'pt-14' : ''}`}>
         <div className={`${isMobile ? 'p-4' : 'p-6'}`}>
           {/* Success/Error Messages */}
           {success && (
@@ -545,11 +634,11 @@ const Account = () => {
 
           {/* Header with Title and Buttons */}
           <div className={`flex ${isMobile ? 'flex-col gap-3' : 'items-center justify-between'} mb-4`}>
-            {!isMobile && <h1 className="text-2xl font-semibold text-white">My Accounts</h1>}
+            {!isMobile && <h1 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>My Accounts</h1>}
             <div className={`flex items-center ${isMobile ? 'justify-between' : 'gap-3'}`}>
               <button 
                 onClick={fetchUserAccounts}
-                className="p-2 hover:bg-dark-700 rounded-lg transition-colors"
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}
               >
                 <RefreshCw size={18} className={`text-gray-400 ${loading ? 'animate-spin' : ''}`} />
               </button>
@@ -570,8 +659,8 @@ const Account = () => {
                 onClick={() => setActiveTab(tab)}
                 className={`${isMobile ? 'px-3 py-1.5 text-xs whitespace-nowrap' : 'px-4 py-2 text-sm'} rounded-lg font-medium transition-colors ${
                   activeTab === tab
-                    ? 'bg-dark-700 text-white border border-gray-600'
-                    : 'text-gray-400 hover:text-white hover:bg-dark-800'
+                    ? isDarkMode ? 'bg-dark-700 text-white border border-gray-600' : 'bg-white text-gray-900 border border-gray-300 shadow-sm'
+                    : isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-800' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 {tab}
@@ -720,27 +809,74 @@ const Account = () => {
           ) : (
             <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'}`}>
               {userAccounts.filter(acc => {
-                if (activeTab === 'Real') return acc.accountTypeId?.category !== 'Demo' && acc.status === 'Active'
-                if (activeTab === 'Demo') return acc.accountTypeId?.category === 'Demo'
-                if (activeTab === 'Archived') return acc.status !== 'Active'
+                if (activeTab === 'Real') return !acc.accountTypeId?.isDemo && !acc.isDemo && acc.status === 'Active'
+                if (activeTab === 'Demo') return (acc.accountTypeId?.isDemo || acc.isDemo) && acc.status === 'Active'
+                if (activeTab === 'Archived') return acc.status === 'Archived' || acc.status !== 'Active'
                 return true
               }).map((account) => (
-                <div key={account._id} className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
+                <div key={account._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl border overflow-hidden`}>
                   {/* Card Header */}
-                  <div className={`${isMobile ? 'p-3' : 'p-4'} border-b border-gray-800`}>
+                  <div className={`${isMobile ? 'p-3' : 'p-4'} border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`${isMobile ? 'w-8 h-8' : 'w-10 h-10'} bg-blue-500/20 rounded-lg flex items-center justify-center`}>
                           <TrendingUp size={isMobile ? 16 : 20} className="text-blue-500" />
                         </div>
                         <div>
-                          <h3 className={`text-white font-semibold ${isMobile ? 'text-sm' : ''}`}>{account.accountId}</h3>
+                          <h3 className={`font-semibold ${isMobile ? 'text-sm' : ''} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{account.accountId}</h3>
                           <p className="text-gray-500 text-xs uppercase">{account.accountTypeId?.name || 'STANDARD'}</p>
                         </div>
                       </div>
-                      <button className="text-gray-500 hover:text-white p-1">
-                        <MoreHorizontal size={18} />
-                      </button>
+                      <div className="relative">
+                        <button 
+                          onClick={() => setShowAccountMenu(showAccountMenu === account._id ? null : account._id)}
+                          className="text-gray-500 hover:text-white p-1"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                        {showAccountMenu === account._id && (
+                          <div 
+                            className="absolute right-0 top-8 bg-dark-700 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[160px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {account.status === 'Archived' ? (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setShowAccountMenu(null)
+                                    handleUnarchiveAccount(account._id)
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-sm text-green-400 hover:bg-dark-600 rounded-t-lg flex items-center gap-2"
+                                >
+                                  <RefreshCw size={14} /> Unarchive
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setShowAccountMenu(null)
+                                    setShowDeleteConfirm(account)
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-dark-600 rounded-b-lg flex items-center gap-2"
+                                >
+                                  <X size={14} /> Delete Permanently
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setShowAccountMenu(null)
+                                  setShowArchiveConfirm(account)
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-dark-600 rounded-lg flex items-center gap-2"
+                              >
+                                <X size={14} /> Archive Account
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 mt-3">
                       <span className={`w-2 h-2 rounded-full ${account.status === 'Active' ? 'bg-green-500' : 'bg-red-500'}`}></span>
@@ -750,38 +886,73 @@ const Account = () => {
                     </div>
                   </div>
 
-                  {/* Card Body - Balance */}
-                  <div className={`${isMobile ? 'p-3' : 'p-4'} text-center`}>
-                    <p className={`text-white font-bold ${isMobile ? 'text-2xl' : 'text-3xl'}`}>${account.balance.toLocaleString()}</p>
-                    <p className="text-gray-500 text-sm mt-1">Balance</p>
+                  {/* Card Body - Balance & Details */}
+                  <div className={`${isMobile ? 'p-3' : 'p-4'}`}>
+                    <div className="text-center mb-3">
+                      <p className={`font-bold ${isMobile ? 'text-2xl' : 'text-3xl'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${account.balance.toLocaleString()}</p>
+                      <p className="text-gray-500 text-sm mt-1">Balance</p>
+                    </div>
+                    
+                    {/* Account Details Grid */}
+                    <div className={`grid grid-cols-2 gap-2 mt-3 pt-3 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+                      <div className="text-center">
+                        <p className="text-gray-500 text-xs">Leverage</p>
+                        <p className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{account.leverage || '1:100'}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-gray-500 text-xs">Credit</p>
+                        <p className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${(account.credit || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-gray-500 text-xs">Min Deposit</p>
+                        <p className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${account.accountTypeId?.minDeposit?.toLocaleString() || '0'}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-gray-500 text-xs">Equity</p>
+                        <p className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${((account.balance || 0) + (account.credit || 0)).toLocaleString()}</p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Card Footer - Actions */}
-                  <div className="flex border-t border-gray-800">
+                  <div className={`flex border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                     <button
                       onClick={() => isMobile ? navigate(`/mobile?account=${account._id}`) : navigate(`/trade/${account._id}`)}
                       className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} bg-accent-green text-black font-medium hover:bg-accent-green/90 transition-colors`}
                     >
                       <ArrowRight size={isMobile ? 12 : 16} /> Trade
                     </button>
-                    <button
-                      onClick={() => { setSelectedAccount(account); setShowTransferModal(true); }}
-                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
-                    >
-                      <Plus size={isMobile ? 12 : 16} /> Deposit
-                    </button>
-                    <button
-                      onClick={() => { setSelectedAccount(account); setShowWithdrawModal(true); }}
-                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
-                    >
-                      <Minus size={isMobile ? 12 : 16} /> Withdraw
-                    </button>
-                    <button
-                      onClick={() => { setSelectedAccount(account); setShowAccountTransferModal(true); }}
-                      className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-blue-400 hover:text-blue-300 hover:bg-dark-700 transition-colors border-l border-gray-800`}
-                    >
-                      <Copy size={isMobile ? 12 : 16} /> Transfer
-                    </button>
+                    {account.isDemo || account.accountTypeId?.isDemo ? (
+                      // Demo account - show Reset button only
+                      <button
+                        onClick={() => handleResetDemo(account._id)}
+                        className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-yellow-400 hover:text-yellow-300 hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                      >
+                        <RefreshCw size={isMobile ? 12 : 16} /> Reset
+                      </button>
+                    ) : (
+                      // Real account - show Deposit/Withdraw/Transfer
+                      <>
+                        <button
+                          onClick={() => { setSelectedAccount(account); setShowTransferModal(true); }}
+                          className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                        >
+                          <Plus size={isMobile ? 12 : 16} /> Deposit
+                        </button>
+                        <button
+                          onClick={() => { setSelectedAccount(account); setShowWithdrawModal(true); }}
+                          className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-gray-400 hover:text-white hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                        >
+                          <Minus size={isMobile ? 12 : 16} /> Withdraw
+                        </button>
+                        <button
+                          onClick={() => { setSelectedAccount(account); setShowAccountTransferModal(true); }}
+                          className={`flex-1 flex items-center justify-center gap-1 ${isMobile ? 'py-2 text-xs' : 'py-3'} text-blue-400 hover:text-blue-300 hover:bg-dark-700 transition-colors border-l border-gray-800`}
+                        >
+                          <Copy size={isMobile ? 12 : 16} /> Transfer
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -792,8 +963,8 @@ const Account = () => {
 
       {/* Create Account Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-lg border border-gray-700">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white font-semibold text-lg">Open New Account</h3>
               <button 
@@ -809,74 +980,112 @@ const Account = () => {
               </button>
             </div>
 
-            {/* Account Type Selection */}
+            {/* Account Type Category Selection */}
+            <div className="mb-4">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCreateAccountTab('live')}
+                  className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                    createAccountTab === 'live' 
+                      ? 'bg-accent-green text-black' 
+                      : 'bg-dark-700 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Live Account
+                </button>
+                <button
+                  onClick={() => setCreateAccountTab('demo')}
+                  className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                    createAccountTab === 'demo' 
+                      ? 'bg-yellow-500 text-black' 
+                      : 'bg-dark-700 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Demo Account
+                </button>
+              </div>
+            </div>
+
+            {/* Account Type Selection - 2 Column Grid Like Screenshot */}
             <div className="mb-6">
-              <label className="block text-gray-400 text-sm mb-3">Select Account Type</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {accountTypes.length === 0 ? (
-                  <p className="text-gray-500 text-sm text-center py-4">No account types available</p>
+              <label className="block text-gray-400 text-sm mb-4">
+                {createAccountTab === 'demo' ? 'Select Demo Account Type' : 'Select Live Account Type'}
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
+                {accountTypes.filter(t => createAccountTab === 'demo' ? t.isDemo : !t.isDemo).length === 0 ? (
+                  <p className="text-gray-500 text-sm text-center py-8 col-span-2">
+                    No {createAccountTab === 'demo' ? 'demo' : 'live'} account types available
+                  </p>
                 ) : (
-                  accountTypes.map((type) => (
-                    <button
-                      key={type._id}
-                      onClick={() => setSelectedType(type)}
-                      className={`w-full p-4 rounded-lg border text-left transition-colors ${
-                        selectedType?._id === type._id
-                          ? 'border-accent-green bg-accent-green/10'
-                          : 'border-gray-700 bg-dark-700 hover:border-gray-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-white font-medium">{type.name}</span>
-                        <span className="text-gray-400 text-sm">Min: ${type.minDeposit}</span>
-                      </div>
-                      <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-                        <span>Leverage: {type.leverage}</span>
-                        {type.exposureLimit > 0 && <span>Exposure: ${type.exposureLimit}</span>}
-                      </div>
-                    </button>
-                  ))
+                  accountTypes.filter(t => createAccountTab === 'demo' ? t.isDemo : !t.isDemo).map((type) => {
+                    const isSelected = selectedType?._id === type._id
+                    const icons = {
+                      'DEMO': '💳',
+                      'STANDARD': '📊',
+                      'PRO': '📈',
+                      'PRO+': '⚡',
+                      'ELITE': '👑',
+                      'HNI': '💎',
+                    }
+                    const icon = icons[type.name?.toUpperCase()] || '📊'
+                    
+                    return (
+                      <button
+                        key={type._id}
+                        onClick={() => setSelectedType(type)}
+                        className={`relative bg-dark-700 rounded-xl p-5 text-left transition-all duration-200 border ${
+                          isSelected
+                            ? 'border-white ring-1 ring-white'
+                            : 'border-gray-700 hover:border-gray-600'
+                        }`}
+                      >
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <span className="text-2xl">{icon}</span>
+                          <span className="text-white font-bold text-lg">{type.name}</span>
+                          <div className={`w-4 h-4 rounded-full border-2 ml-auto ${isSelected ? 'border-white bg-white' : 'border-gray-500'}`}>
+                            {isSelected && <div className="w-full h-full rounded-full bg-white" />}
+                          </div>
+                        </div>
+                        
+                        {/* Description */}
+                        <p className="text-gray-400 text-sm mb-4">
+                          {type.description || (type.isDemo ? 'Practice trading with virtual funds. No risk involved.' : 'Live trading account')}
+                        </p>
+                        
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                          <div>
+                            <p className="text-gray-500 text-xs">{type.isDemo ? 'Virtual Balance' : 'Min deposit'}</p>
+                            <p className="text-white font-semibold">${type.isDemo ? '10,000' : type.minDeposit?.toLocaleString() || '100'} {!type.isDemo && 'USD'}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs">Min spread</p>
+                            <p className="text-white font-semibold">{type.spread || '2'} pips</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs">Max leverage</p>
+                            <p className="text-white font-semibold">{type.leverage || '1:100'}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs">Commission</p>
+                            <p className="text-white font-semibold">{type.commission ? `$${type.commission}/lot` : 'NO COMM'}</p>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })
                 )}
               </div>
             </div>
 
             {selectedType && (
-              <div className="mb-6">
-                <div className="p-3 bg-dark-700 rounded-lg mb-4">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-400">Account Type:</span>
-                    <span className="text-white font-medium">{selectedType.name}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Leverage:</span>
-                    <span className="text-white font-medium">{selectedType.leverage}</span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg mb-4">
-                  <p className="text-blue-400 text-sm">
-                    Account will be created with $0 balance. You can deposit funds after creation.
-                  </p>
-                </div>
-
-                <label className="block text-gray-400 text-sm mb-3">Set 4-digit Account PIN</label>
-                <div className="flex gap-3 justify-center">
-                  {pin.map((digit, index) => (
-                    <input
-                      key={index}
-                      id={`pin-${index}`}
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handlePinChange(index, e.target.value, pin, setPin, 'pin')}
-                      onKeyDown={(e) => handlePinKeyDown(e, index, pin, setPin, 'pin')}
-                      onFocus={handlePinFocus}
-                      autoFocus={index === 0}
-                      className="w-14 h-14 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-2xl focus:outline-none focus:border-accent-green"
-                    />
-                  ))}
-                </div>
+              <div className={`mb-4 p-4 rounded-xl ${selectedType.isDemo ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-accent-green/10 border border-accent-green/30'}`}>
+                <p className={`text-sm text-center ${selectedType.isDemo ? 'text-yellow-500' : 'text-accent-green'}`}>
+                  ✓ <strong>{selectedType.name}</strong> {selectedType.isDemo 
+                    ? `demo account will be created with $${selectedType.demoBalance?.toLocaleString() || '10,000'} virtual balance.`
+                    : 'account will be created with $0 balance. Deposit funds after creation.'}
+                </p>
               </div>
             )}
 
@@ -1060,29 +1269,6 @@ const Account = () => {
               </div>
             </div>
 
-            {pinSecurityEnabled && (
-              <div className="mb-6">
-                <label className="block text-gray-400 text-sm mb-3">Enter Account PIN</label>
-                <div className="flex gap-3 justify-center">
-                  {transferPin.map((digit, index) => (
-                    <input
-                      key={`transfer-${index}`}
-                      id={`transferpin-${index}`}
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handlePinChange(index, e.target.value, transferPin, setTransferPin, 'transferpin')}
-                      onKeyDown={(e) => handlePinKeyDown(e, index, transferPin, setTransferPin, 'transferpin')}
-                      onFocus={handlePinFocus}
-                      autoFocus={index === 0}
-                      className="w-12 h-12 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-xl focus:outline-none focus:border-accent-green"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
             {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
             <div className="flex gap-3">
@@ -1090,7 +1276,6 @@ const Account = () => {
                 onClick={() => {
                   setShowTransferModal(false)
                   setTransferAmount('')
-                  setTransferPin(['', '', '', ''])
                   setError('')
                 }}
                 className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
@@ -1169,29 +1354,6 @@ const Account = () => {
               </div>
             </div>
 
-            {pinSecurityEnabled && (
-              <div className="mb-6">
-                <label className="block text-gray-400 text-sm mb-3">Enter Account PIN</label>
-                <div className="flex gap-3 justify-center">
-                  {transferPin.map((digit, index) => (
-                    <input
-                      key={`withdraw-${index}`}
-                      id={`withdrawpin-${index}`}
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handlePinChange(index, e.target.value, transferPin, setTransferPin, 'withdrawpin')}
-                      onKeyDown={(e) => handlePinKeyDown(e, index, transferPin, setTransferPin, 'withdrawpin')}
-                      onFocus={handlePinFocus}
-                      autoFocus={index === 0}
-                      className="w-12 h-12 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-xl focus:outline-none focus:border-accent-green"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
             {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
             <div className="flex gap-3">
@@ -1199,7 +1361,6 @@ const Account = () => {
                 onClick={() => {
                   setShowWithdrawModal(false)
                   setTransferAmount('')
-                  setTransferPin(['', '', '', ''])
                   setError('')
                 }}
                 className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
@@ -1302,30 +1463,6 @@ const Account = () => {
               </button>
             </div>
 
-            {/* PIN */}
-            {pinSecurityEnabled && (
-              <div className="mb-6">
-                <label className="block text-gray-400 text-sm mb-3">Enter Source Account PIN</label>
-                <div className="flex gap-3 justify-center">
-                  {transferPin.map((digit, index) => (
-                    <input
-                      key={`acctransfer-${index}`}
-                      id={`acctransferpin-${index}`}
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handlePinChange(index, e.target.value, transferPin, setTransferPin, 'acctransferpin')}
-                      onKeyDown={(e) => handlePinKeyDown(e, index, transferPin, setTransferPin, 'acctransferpin')}
-                      onFocus={handlePinFocus}
-                      autoFocus={index === 0}
-                      className="w-12 h-12 bg-dark-700 border border-gray-700 rounded-lg text-center text-white text-xl focus:outline-none focus:border-blue-500"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
             {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
             <div className="flex gap-3">
@@ -1333,7 +1470,6 @@ const Account = () => {
                 onClick={() => {
                   setShowAccountTransferModal(false)
                   setTransferAmount('')
-                  setTransferPin(['', '', '', ''])
                   setTargetAccount(null)
                   setError('')
                 }}
@@ -1519,6 +1655,70 @@ const Account = () => {
                   Try a New Challenge
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-sm border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <X size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-white font-semibold text-lg mb-2">Archive Account?</h3>
+              <p className="text-gray-400 text-sm">
+                Are you sure you want to archive <span className="text-white font-medium">{showArchiveConfirm.accountId}</span>? 
+                The account will be moved to archived and you won't be able to trade on it.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowArchiveConfirm(null)}
+                className="flex-1 py-3 bg-dark-700 text-white rounded-lg hover:bg-dark-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleArchiveAccount(showArchiveConfirm._id)}
+                className="flex-1 py-3 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-sm border border-gray-700">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <X size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-white font-semibold text-lg mb-2">Delete Permanently?</h3>
+              <p className="text-gray-400 text-sm">
+                Are you sure you want to permanently delete <span className="text-white font-medium">{showDeleteConfirm.accountId}</span>? 
+                This action cannot be undone and all account data will be lost forever.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="flex-1 py-3 bg-dark-700 text-white rounded-lg hover:bg-dark-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteAccount(showDeleteConfirm._id)}
+                className="flex-1 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete Forever
+              </button>
             </div>
           </div>
         </div>

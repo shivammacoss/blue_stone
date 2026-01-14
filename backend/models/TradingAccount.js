@@ -39,7 +39,7 @@ const tradingAccountSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Active', 'Suspended', 'Closed', 'Frozen'],
+    enum: ['Active', 'Suspended', 'Closed', 'Frozen', 'Archived'],
     default: 'Active'
   },
   frozenReason: {
@@ -54,6 +54,10 @@ const tradingAccountSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+  isDemo: {
+    type: Boolean,
+    default: false
   }
 }, { timestamps: true })
 
@@ -69,11 +73,10 @@ tradingAccountSchema.methods.verifyPin = async function(pin) {
   return await bcrypt.compare(pin, this.pin)
 }
 
-// Generate unique account ID
+// Generate unique account ID (numbers only, 8 digits)
 tradingAccountSchema.statics.generateAccountId = async function() {
-  const prefix = 'TRD'
-  const random = Math.floor(100000 + Math.random() * 900000)
-  const accountId = `${prefix}${random}`
+  const random = Math.floor(10000000 + Math.random() * 90000000)
+  const accountId = `${random}`
   const exists = await this.findOne({ accountId })
   if (exists) return this.generateAccountId()
   return accountId

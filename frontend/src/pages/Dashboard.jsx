@@ -19,13 +19,17 @@ import {
   Activity,
   Trophy,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Sun,
+  Moon
 } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
 const Dashboard = () => {
   const navigate = useNavigate()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const [activeMenu, setActiveMenu] = useState('Dashboard')
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [news, setNews] = useState([])
@@ -308,6 +312,7 @@ const Dashboard = () => {
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Account', icon: User, path: '/account' },
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Orders', icon: FileText, path: '/orders' },
     { name: 'IB', icon: Users, path: '/ib' },
     { name: 'Copytrade', icon: Copy, path: '/copytrade' },
     { name: 'Profile', icon: UserCircle, path: '/profile' },
@@ -398,22 +403,22 @@ const Dashboard = () => {
   }, [])
 
   return (
-    <div className="min-h-screen bg-dark-900 flex">
-      {/* Collapsible Sidebar */}
+    <div className={`h-screen flex transition-colors duration-300 ${isDarkMode ? 'bg-dark-900' : 'bg-gray-100'}`}>
+      {/* Collapsible Sidebar - Fixed */}
       <aside 
-        className={`${sidebarExpanded ? 'w-48' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300 ease-in-out`}
+        className={`${sidebarExpanded ? 'w-48' : 'w-16'} ${isDarkMode ? 'bg-dark-900 border-gray-800' : 'bg-white border-gray-200'} border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ease-in-out`}
         onMouseEnter={() => setSidebarExpanded(true)}
         onMouseLeave={() => setSidebarExpanded(false)}
       >
         {/* Logo - Icon only */}
-        <div className="p-4 flex items-center justify-center">
+        <div className="p-4 flex items-center justify-center shrink-0">
           <div className="w-8 h-8 bg-accent-green rounded flex items-center justify-center">
-            <span className="text-black font-bold text-sm">⟨X</span>
+            <span className="text-black font-bold text-sm">CL</span>
           </div>
         </div>
 
         {/* Menu */}
-        <nav className="flex-1 px-2">
+        <nav className="flex-1 px-2 overflow-y-auto">
           {menuItems.map((item) => (
             <button
               key={item.name}
@@ -421,7 +426,9 @@ const Dashboard = () => {
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
                 activeMenu === item.name 
                   ? 'bg-accent-green text-black' 
-                  : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                  : isDarkMode 
+                    ? 'text-gray-400 hover:text-white hover:bg-dark-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
               title={!sidebarExpanded ? item.name : ''}
             >
@@ -431,11 +438,27 @@ const Dashboard = () => {
           ))}
         </nav>
 
-        {/* Logout */}
-        <div className="p-2 border-t border-gray-800">
+        {/* Theme Toggle & Logout - Fixed at bottom */}
+        <div className={`p-2 border-t shrink-0 ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+          {/* Theme Toggle */}
+          <button 
+            onClick={toggleDarkMode}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
+              isDarkMode 
+                ? 'text-yellow-400 hover:text-yellow-300 hover:bg-dark-700'
+                : 'text-blue-600 hover:text-blue-700 hover:bg-gray-100'
+            }`}
+            title={!sidebarExpanded ? (isDarkMode ? 'Light Mode' : 'Dark Mode') : ''}
+          >
+            {isDarkMode ? <Sun size={18} className="flex-shrink-0" /> : <Moon size={18} className="flex-shrink-0" />}
+            {sidebarExpanded && <span className="text-sm font-medium whitespace-nowrap">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+          </button>
+          
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white transition-colors rounded-lg"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors rounded-lg ${
+              isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+            }`}
             title={!sidebarExpanded ? 'Log Out' : ''}
           >
             <LogOut size={18} className="flex-shrink-0" />
@@ -444,11 +467,11 @@ const Dashboard = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      {/* Main Content - Scrollable */}
+      <main className="flex-1 overflow-y-auto">
         {/* Market News Slider - Top Banner */}
         {marketNews.length > 0 && (
-          <div className="relative bg-gradient-to-r from-dark-800 via-dark-900 to-dark-800 border-b border-gray-800">
+          <div className={`relative border-b ${isDarkMode ? 'bg-gradient-to-r from-dark-800 via-dark-900 to-dark-800 border-gray-800' : 'bg-gradient-to-r from-gray-100 via-white to-gray-100 border-gray-200'}`}>
             <div className="flex items-center">
               {/* News Label */}
               <div className="bg-red-500 px-4 py-3 flex items-center gap-2">
@@ -468,7 +491,7 @@ const Dashboard = () => {
                       href={item.link || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="min-w-full flex items-center gap-4 px-4 py-2 hover:bg-dark-700/50 transition-colors"
+                      className={`min-w-full flex items-center gap-4 px-4 py-2 transition-colors ${isDarkMode ? 'hover:bg-dark-700/50' : 'hover:bg-gray-100'}`}
                     >
                       {item.image_url && (
                         <img 
@@ -479,8 +502,8 @@ const Dashboard = () => {
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-white font-medium text-sm truncate">{item.title}</p>
-                        <p className="text-gray-400 text-xs truncate">{item.description}</p>
+                        <p className={`font-medium text-sm truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</p>
+                        <p className={`text-xs truncate ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.description}</p>
                       </div>
                       <ExternalLink size={14} className="text-gray-500 flex-shrink-0" />
                     </a>
@@ -492,26 +515,26 @@ const Dashboard = () => {
               <div className="flex items-center gap-1 px-2">
                 <button 
                   onClick={prevNews}
-                  className="p-1.5 hover:bg-dark-700 rounded transition-colors text-gray-400 hover:text-white"
+                  className={`p-1.5 rounded transition-colors ${isDarkMode ? 'hover:bg-dark-700 text-gray-400 hover:text-white' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-900'}`}
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <button 
                   onClick={nextNews}
-                  className="p-1.5 hover:bg-dark-700 rounded transition-colors text-gray-400 hover:text-white"
+                  className={`p-1.5 rounded transition-colors ${isDarkMode ? 'hover:bg-dark-700 text-gray-400 hover:text-white' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-900'}`}
                 >
                   <ChevronRight size={18} />
                 </button>
               </div>
 
               {/* Dots Indicator */}
-              <div className="flex items-center gap-1 px-3 border-l border-gray-700">
+              <div className={`flex items-center gap-1 px-3 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-300'}`}>
                 {marketNews.slice(0, 8).map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentNewsIndex(index)}
                     className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                      currentNewsIndex === index ? 'bg-accent-green' : 'bg-gray-600'
+                      currentNewsIndex === index ? 'bg-accent-green' : isDarkMode ? 'bg-gray-600' : 'bg-gray-300'
                     }`}
                   />
                 ))}
@@ -521,9 +544,9 @@ const Dashboard = () => {
         )}
 
         {/* Simple Header */}
-        <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-          <h1 className="text-xl font-semibold text-white">Dashboard</h1>
-          <p className="text-gray-500 text-sm">Welcome back!</p>
+        <header className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+          <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dashboard</h1>
+          <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Welcome back!</p>
         </header>
 
         {/* Dashboard Content */}
@@ -531,43 +554,43 @@ const Dashboard = () => {
           {/* Top Stats Boxes */}
           <div className="grid grid-cols-4 gap-4 mb-6">
             {/* Wallet Box */}
-            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 bg-accent-green/20 rounded-lg flex items-center justify-center">
                   <Wallet size={20} className="text-accent-green" />
                 </div>
                 <button onClick={() => navigate('/wallet')} className="text-accent-green text-xs font-medium hover:underline">View</button>
               </div>
-              <p className="text-gray-500 text-sm mb-1">Wallet Balance</p>
-              <p className="text-white text-2xl font-bold">${walletBalance.toLocaleString()}</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Wallet Balance</p>
+              <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${walletBalance.toLocaleString()}</p>
             </div>
 
             {/* Total Trades Box */}
-            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
                   <TrendingUp size={20} className="text-blue-500" />
                 </div>
                 <span className="text-gray-500 text-xs">{userAccounts.length} accounts</span>
               </div>
-              <p className="text-gray-500 text-sm mb-1">Total Trades</p>
-              <p className="text-white text-2xl font-bold">{totalTrades.toLocaleString()}</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Total Trades</p>
+              <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{totalTrades.toLocaleString()}</p>
             </div>
 
             {/* Total Charges Box */}
-            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
                   <DollarSign size={20} className="text-orange-500" />
                 </div>
-                <span className="text-gray-500 text-xs">Fees & Swap</span>
+                <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Fees & Swap</span>
               </div>
-              <p className="text-gray-500 text-sm mb-1">Total Charges</p>
-              <p className="text-white text-2xl font-bold">${totalCharges.toFixed(2)}</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Total Charges</p>
+              <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${totalCharges.toFixed(2)}</p>
             </div>
 
             {/* Total PnL Box */}
-            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                   <Activity size={20} className="text-purple-500" />
@@ -576,7 +599,7 @@ const Dashboard = () => {
                   {totalPnl >= 0 ? '+' : ''}{totalPnl !== 0 ? ((totalPnl / (walletBalance || 1)) * 100).toFixed(1) + '%' : '0%'}
                 </span>
               </div>
-              <p className="text-gray-500 text-sm mb-1">Total PnL</p>
+              <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Total PnL</p>
               <p className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-accent-green' : 'text-red-500'}`}>
                 {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
               </p>
@@ -584,14 +607,14 @@ const Dashboard = () => {
           </div>
 
           {/* Forex Heatmap */}
-          <div className="bg-dark-800 rounded-xl p-5 border border-gray-800 mb-6">
+          <div className={`rounded-xl p-5 border mb-6 ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
                 <Activity size={20} className="text-orange-500" />
               </div>
               <div>
-                <h2 className="text-white font-semibold">Forex Heatmap</h2>
-                <p className="text-gray-500 text-sm">Currency strength visualization</p>
+                <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Forex Heatmap</h2>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Currency strength visualization</p>
               </div>
             </div>
             <div className="h-80 overflow-hidden rounded-lg">
@@ -602,14 +625,14 @@ const Dashboard = () => {
           </div>
 
           {/* Forex Screener */}
-          <div className="bg-dark-800 rounded-xl p-5 border border-gray-800 mb-6">
+          <div className={`rounded-xl p-5 border mb-6 ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-cyan-500/20 rounded-lg flex items-center justify-center">
                 <TrendingUp size={20} className="text-cyan-500" />
               </div>
               <div>
-                <h2 className="text-white font-semibold">Forex Screener</h2>
-                <p className="text-gray-500 text-sm">Real-time currency pair analysis</p>
+                <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Forex Screener</h2>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time currency pair analysis</p>
               </div>
             </div>
             <div className="h-96 overflow-hidden rounded-lg">
@@ -622,14 +645,14 @@ const Dashboard = () => {
           {/* Market News & Economic Calendar - TradingView Widgets */}
           <div className="grid grid-cols-2 gap-6">
             {/* Market News - TradingView Timeline Widget */}
-            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
                   <Newspaper size={20} className="text-blue-500" />
                 </div>
                 <div>
-                  <h2 className="text-white font-semibold">Market News</h2>
-                  <p className="text-gray-500 text-sm">Real-time updates from TradingView</p>
+                  <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Market News</h2>
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time updates from TradingView</p>
                 </div>
               </div>
               <div className="h-96 overflow-hidden rounded-lg">
@@ -640,14 +663,14 @@ const Dashboard = () => {
             </div>
 
             {/* Economic Calendar - TradingView Widget */}
-            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                   <Calendar size={20} className="text-purple-500" />
                 </div>
                 <div>
-                  <h2 className="text-white font-semibold">Economic Calendar</h2>
-                  <p className="text-gray-500 text-sm">Real-time events from TradingView</p>
+                  <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Economic Calendar</h2>
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time events from TradingView</p>
                 </div>
               </div>
               <div className="h-96 overflow-hidden rounded-lg">

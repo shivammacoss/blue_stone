@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   LayoutDashboard, User, Wallet, Users, Copy, UserCircle, HelpCircle, FileText, LogOut,
-  MessageCircle, Send, Clock, CheckCircle, AlertCircle, Plus, Trophy, ArrowLeft, Home
+  MessageCircle, Send, Clock, CheckCircle, AlertCircle, Plus, Trophy, ArrowLeft, Home, Sun, Moon
 } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
 const SupportPage = () => {
   const navigate = useNavigate()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('new')
   const [tickets, setTickets] = useState([])
@@ -29,6 +31,7 @@ const SupportPage = () => {
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Account', icon: User, path: '/account' },
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Orders', icon: FileText, path: '/orders' },
     { name: 'IB', icon: Users, path: '/ib' },
     { name: 'Copytrade', icon: Copy, path: '/copytrade' },
     { name: 'Profile', icon: UserCircle, path: '/profile' },
@@ -159,15 +162,18 @@ const SupportPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dark-900 flex flex-col md:flex-row">
+    <div className={`min-h-screen flex flex-col md:flex-row transition-colors duration-300 ${isDarkMode ? 'bg-dark-900' : 'bg-gray-100'}`}>
       {/* Mobile Header */}
       {isMobile && (
-        <header className="fixed top-0 left-0 right-0 z-40 bg-dark-800 border-b border-gray-800 px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/mobile')} className="p-2 -ml-2 hover:bg-dark-700 rounded-lg">
-            <ArrowLeft size={22} className="text-white" />
+        <header className={`fixed top-0 left-0 right-0 z-40 px-4 py-3 flex items-center gap-4 ${isDarkMode ? 'bg-dark-800 border-b border-gray-800' : 'bg-white border-b border-gray-200'}`}>
+          <button onClick={() => navigate('/mobile')} className={`p-2 -ml-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
+            <ArrowLeft size={22} className={isDarkMode ? 'text-white' : 'text-gray-900'} />
           </button>
-          <h1 className="text-white font-semibold text-lg flex-1">Support</h1>
-          <button onClick={() => navigate('/mobile')} className="p-2 hover:bg-dark-700 rounded-lg">
+          <h1 className={`font-semibold text-lg flex-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Support</h1>
+          <button onClick={toggleDarkMode} className={`p-2 rounded-lg ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}>
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          <button onClick={() => navigate('/mobile')} className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
             <Home size={20} className="text-gray-400" />
           </button>
         </header>
@@ -176,7 +182,7 @@ const SupportPage = () => {
       {/* Sidebar - Hidden on Mobile */}
       {!isMobile && (
         <aside 
-          className={`${sidebarExpanded ? 'w-48' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300`}
+          className={`${sidebarExpanded ? 'w-48' : 'w-16'} ${isDarkMode ? 'bg-dark-900 border-gray-800' : 'bg-white border-gray-200'} border-r flex flex-col transition-all duration-300`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
@@ -191,7 +197,7 @@ const SupportPage = () => {
                 key={item.name}
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
-                  item.name === 'Support' ? 'bg-accent-green text-black' : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                  item.name === 'Support' ? 'bg-accent-green text-black' : isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 <item.icon size={18} className="flex-shrink-0" />
@@ -199,8 +205,12 @@ const SupportPage = () => {
               </button>
             ))}
           </nav>
-          <div className="p-2 border-t border-gray-800">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white rounded-lg">
+          <div className={`p-2 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <button onClick={toggleDarkMode} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}>
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              {sidebarExpanded && <span className="text-sm">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+            </button>
+            <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
               <LogOut size={18} />
               {sidebarExpanded && <span className="text-sm">Log Out</span>}
             </button>
@@ -211,8 +221,8 @@ const SupportPage = () => {
       {/* Main Content */}
       <main className={`flex-1 overflow-auto ${isMobile ? 'pt-14' : ''}`}>
         {!isMobile && (
-          <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-            <h1 className="text-xl font-semibold text-white">Support</h1>
+          <header className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Support</h1>
           </header>
         )}
 
@@ -222,7 +232,7 @@ const SupportPage = () => {
             <button
               onClick={() => setActiveTab('new')}
               className={`flex items-center gap-2 ${isMobile ? 'px-3 py-2 text-sm' : 'px-4 py-2'} rounded-lg font-medium transition-colors ${
-                activeTab === 'new' ? 'bg-accent-green text-black' : 'bg-dark-800 text-gray-400 hover:text-white'
+                activeTab === 'new' ? 'bg-accent-green text-black' : isDarkMode ? 'bg-dark-800 text-gray-400 hover:text-white' : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
               }`}
             >
               <Plus size={isMobile ? 14 : 16} />
@@ -231,7 +241,7 @@ const SupportPage = () => {
             <button
               onClick={() => setActiveTab('history')}
               className={`flex items-center gap-2 ${isMobile ? 'px-3 py-2 text-sm' : 'px-4 py-2'} rounded-lg font-medium transition-colors ${
-                activeTab === 'history' ? 'bg-accent-green text-black' : 'bg-dark-800 text-gray-400 hover:text-white'
+                activeTab === 'history' ? 'bg-accent-green text-black' : isDarkMode ? 'bg-dark-800 text-gray-400 hover:text-white' : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
               }`}
             >
               <MessageCircle size={isMobile ? 14 : 16} />
@@ -241,16 +251,16 @@ const SupportPage = () => {
 
           {activeTab === 'new' ? (
             <div className={isMobile ? '' : 'max-w-2xl'}>
-              <div className={`bg-dark-800 rounded-xl ${isMobile ? 'p-4' : 'p-6'} border border-gray-800`}>
-                <h2 className={`text-white font-semibold ${isMobile ? 'mb-4 text-sm' : 'mb-6'}`}>Submit a Support Ticket</h2>
+              <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl ${isMobile ? 'p-4' : 'p-6'} border`}>
+                <h2 className={`font-semibold ${isMobile ? 'mb-4 text-sm' : 'mb-6'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Submit a Support Ticket</h2>
                 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="text-gray-400 text-sm mb-2 block">Category</label>
+                    <label className={`text-sm mb-2 block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Category</label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="w-full bg-dark-700 border border-gray-600 rounded-lg px-4 py-2 text-white"
+                      className={`w-full rounded-lg px-4 py-2 border ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                     >
                       <option value="general">General Inquiry</option>
                       <option value="deposit">Deposit Issue</option>
@@ -262,24 +272,24 @@ const SupportPage = () => {
                   </div>
 
                   <div>
-                    <label className="text-gray-400 text-sm mb-2 block">Subject</label>
+                    <label className={`text-sm mb-2 block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Subject</label>
                     <input
                       type="text"
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
                       placeholder="Brief description of your issue"
-                      className="w-full bg-dark-700 border border-gray-600 rounded-lg px-4 py-2 text-white"
+                      className={`w-full rounded-lg px-4 py-2 border ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                     />
                   </div>
 
                   <div>
-                    <label className="text-gray-400 text-sm mb-2 block">Message</label>
+                    <label className={`text-sm mb-2 block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Message</label>
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Describe your issue in detail..."
                       rows={6}
-                      className="w-full bg-dark-700 border border-gray-600 rounded-lg px-4 py-2 text-white resize-none"
+                      className={`w-full rounded-lg px-4 py-2 border resize-none ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                     />
                   </div>
 
@@ -295,24 +305,24 @@ const SupportPage = () => {
               </div>
 
               {/* FAQ Section */}
-              <div className="bg-dark-800 rounded-xl p-6 border border-gray-800 mt-6">
-                <h3 className="text-white font-semibold mb-4">Frequently Asked Questions</h3>
+              <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-6 border mt-6`}>
+                <h3 className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Frequently Asked Questions</h3>
                 <div className="space-y-4">
-                  <div className="border-b border-gray-700 pb-4">
-                    <p className="text-white font-medium">How long does a deposit take?</p>
-                    <p className="text-gray-400 text-sm mt-1">Deposits are usually processed within 24 hours after verification.</p>
+                  <div className={`border-b pb-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>How long does a deposit take?</p>
+                    <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Deposits are usually processed within 24 hours after verification.</p>
                   </div>
-                  <div className="border-b border-gray-700 pb-4">
-                    <p className="text-white font-medium">How do I withdraw funds?</p>
-                    <p className="text-gray-400 text-sm mt-1">Go to Wallet → Withdraw and follow the instructions. Withdrawals are processed within 1-3 business days.</p>
+                  <div className={`border-b pb-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>How do I withdraw funds?</p>
+                    <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Go to Wallet → Withdraw and follow the instructions. Withdrawals are processed within 1-3 business days.</p>
                   </div>
-                  <div className="border-b border-gray-700 pb-4">
-                    <p className="text-white font-medium">What is the minimum deposit?</p>
-                    <p className="text-gray-400 text-sm mt-1">The minimum deposit depends on your account type. Check Account Types for details.</p>
+                  <div className={`border-b pb-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>What is the minimum deposit?</p>
+                    <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>The minimum deposit depends on your account type. Check Account Types for details.</p>
                   </div>
                   <div>
-                    <p className="text-white font-medium">How do I become an IB?</p>
-                    <p className="text-gray-400 text-sm mt-1">Go to the IB section and click "Apply Now" to submit your application.</p>
+                    <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>How do I become an IB?</p>
+                    <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Go to the IB section and click "Apply Now" to submit your application.</p>
                   </div>
                 </div>
               </div>
@@ -337,12 +347,12 @@ const SupportPage = () => {
                   {tickets.map(ticket => (
                     <div 
                       key={ticket._id} 
-                      className="bg-dark-800 rounded-xl p-5 border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors"
+                      className={`${isDarkMode ? 'bg-dark-800 border-gray-800 hover:border-gray-600' : 'bg-white border-gray-200 hover:border-gray-400 shadow-sm'} rounded-xl p-5 border cursor-pointer transition-colors`}
                       onClick={() => openTicketChat(ticket.ticketId)}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h3 className="text-white font-medium">{ticket.subject}</h3>
+                          <h3 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{ticket.subject}</h3>
                           <p className="text-gray-500 text-sm">#{ticket.ticketId} • {ticket.category}</p>
                         </div>
                         <div className="flex items-center gap-2">

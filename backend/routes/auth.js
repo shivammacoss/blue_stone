@@ -13,7 +13,7 @@ const generateToken = (userId) => {
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
   try {
-    const { firstName, email, phone, countryCode, password, adminSlug } = req.body
+    const { firstName, email, phone, countryCode, password, adminSlug, referralCode } = req.body
 
     // Check if user already exists
     const existingUser = await User.findOne({ email })
@@ -32,6 +32,22 @@ router.post('/signup', async (req, res) => {
       }
     }
 
+    // Handle referral code - find the referring IB
+    let parentIBId = null
+    let referredBy = null
+    if (referralCode) {
+      const referringIB = await User.findOne({ 
+        referralCode: referralCode, 
+        isIB: true, 
+        ibStatus: 'ACTIVE' 
+      })
+      if (referringIB) {
+        parentIBId = referringIB._id
+        referredBy = referralCode
+        console.log(`[Signup] User ${email} referred by IB ${referringIB.firstName} (${referralCode})`)
+      }
+    }
+
     // Create new user
     const user = await User.create({
       firstName,
@@ -40,7 +56,9 @@ router.post('/signup', async (req, res) => {
       countryCode,
       password,
       assignedAdmin,
-      adminUrlSlug
+      adminUrlSlug,
+      parentIBId,
+      referredBy
     })
 
     // Update admin stats if assigned

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   LayoutDashboard, 
@@ -25,13 +25,20 @@ import {
   Send,
   Download,
   ArrowLeft,
-  Home
+  Home,
+  Upload,
+  Image,
+  BookOpen,
+  Sun,
+  Moon
 } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
 const WalletPage = () => {
   const navigate = useNavigate()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const [activeMenu, setActiveMenu] = useState('Wallet')
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [wallet, setWallet] = useState(null)
@@ -50,6 +57,10 @@ const WalletPage = () => {
   const [currencies, setCurrencies] = useState([])
   const [selectedCurrency, setSelectedCurrency] = useState(null)
   const [localAmount, setLocalAmount] = useState('')
+  const [screenshot, setScreenshot] = useState(null)
+  const [screenshotPreview, setScreenshotPreview] = useState(null)
+  const [uploadingScreenshot, setUploadingScreenshot] = useState(false)
+  const fileInputRef = useRef(null)
 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -57,12 +68,50 @@ const WalletPage = () => {
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Account', icon: User, path: '/account' },
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Orders', icon: BookOpen, path: '/orders' },
     { name: 'IB', icon: Users, path: '/ib' },
     { name: 'Copytrade', icon: Copy, path: '/copytrade' },
     { name: 'Profile', icon: UserCircle, path: '/profile' },
     { name: 'Support', icon: HelpCircle, path: '/support' },
-    { name: 'Instructions', icon: FileText, path: '/instructions' },
   ]
+
+  // Handle screenshot file selection
+  const handleScreenshotChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Screenshot must be less than 5MB')
+        return
+      }
+      setScreenshot(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setScreenshotPreview(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  // Download transactions as CSV
+  const downloadTransactionsCSV = () => {
+    const headers = ['Date', 'Type', 'Amount', 'Method', 'Status', 'Reference']
+    const rows = transactions.map(tx => [
+      new Date(tx.createdAt).toLocaleString(),
+      tx.type,
+      tx.amount.toFixed(2),
+      tx.paymentMethod || 'Internal',
+      tx.status,
+      tx.transactionRef || '-'
+    ])
+    
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+  }
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -172,19 +221,39 @@ const WalletPage = () => {
       : parseFloat(localAmount)
 
     try {
+      setUploadingScreenshot(true)
+      
+      // Upload screenshot first if provided
+      let screenshotUrl = null
+      if (screenshot) {
+        const formData = new FormData()
+        formData.append('screenshot', screenshot)
+        formData.append('userId', user._id)
+        
+        const uploadRes = await fetch(`${API_URL}/upload/screenshot`, {
+          method: 'POST',
+          body: formData
+        })
+        const uploadData = await uploadRes.json()
+        if (uploadData.success) {
+          screenshotUrl = uploadData.url
+        }
+      }
+
       const res = await fetch(`${API_URL}/wallet/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user._id,
-          amount: usdAmount, // USD amount for wallet
+          amount: usdAmount,
           localAmount: parseFloat(localAmount),
           currency: selectedCurrency?.currency || 'USD',
           currencySymbol: selectedCurrency?.symbol || '$',
           exchangeRate: selectedCurrency?.rateToUSD || 1,
           markup: selectedCurrency?.markup || 0,
           paymentMethod: selectedPaymentMethod.type,
-          transactionRef
+          transactionRef,
+          screenshot: screenshotUrl || screenshotPreview
         })
       })
       const data = await res.json()
@@ -197,6 +266,8 @@ const WalletPage = () => {
         setTransactionRef('')
         setSelectedPaymentMethod(null)
         setSelectedCurrency(null)
+        setScreenshot(null)
+        setScreenshotPreview(null)
         fetchWallet()
         fetchTransactions()
         setTimeout(() => setSuccess(''), 3000)
@@ -206,6 +277,8 @@ const WalletPage = () => {
     } catch (error) {
       console.error('Deposit error:', error)
       setError('Error submitting deposit. Please try again.')
+    } finally {
+      setUploadingScreenshot(false)
     }
   }
 
@@ -287,34 +360,37 @@ const WalletPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dark-900 flex">
+    <div className={`h-screen flex transition-colors duration-300 ${isDarkMode ? 'bg-dark-900' : 'bg-gray-100'}`}>
       {/* Mobile Header */}
       {isMobile && (
-        <header className="fixed top-0 left-0 right-0 z-40 bg-dark-800 border-b border-gray-800 px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/mobile')} className="p-2 -ml-2 hover:bg-dark-700 rounded-lg">
-            <ArrowLeft size={22} className="text-white" />
+        <header className={`fixed top-0 left-0 right-0 z-40 px-4 py-3 flex items-center gap-4 ${isDarkMode ? 'bg-dark-800 border-b border-gray-800' : 'bg-white border-b border-gray-200'}`}>
+          <button onClick={() => navigate('/mobile')} className={`p-2 -ml-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
+            <ArrowLeft size={22} className={isDarkMode ? 'text-white' : 'text-gray-900'} />
           </button>
-          <h1 className="text-white font-semibold text-lg flex-1">Wallet</h1>
-          <button onClick={() => navigate('/mobile')} className="p-2 hover:bg-dark-700 rounded-lg">
+          <h1 className={`font-semibold text-lg flex-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Wallet</h1>
+          <button onClick={toggleDarkMode} className={`p-2 rounded-lg ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}>
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          <button onClick={() => navigate('/mobile')} className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
             <Home size={20} className="text-gray-400" />
           </button>
         </header>
       )}
 
-      {/* Collapsible Sidebar - Hidden on Mobile */}
+      {/* Collapsible Sidebar - Hidden on Mobile, Fixed */}
       {!isMobile && (
         <aside 
-          className={`${sidebarExpanded ? 'w-48' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300 ease-in-out`}
+          className={`${sidebarExpanded ? 'w-48' : 'w-16'} ${isDarkMode ? 'bg-dark-900 border-gray-800' : 'bg-white border-gray-200'} border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ease-in-out`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
-          <div className="p-4 flex items-center justify-center">
+          <div className="p-4 flex items-center justify-center shrink-0">
             <div className="w-8 h-8 bg-accent-green rounded flex items-center justify-center">
-              <span className="text-black font-bold text-sm">⟨X</span>
+              <span className="text-black font-bold text-sm">CL</span>
             </div>
           </div>
 
-          <nav className="flex-1 px-2">
+          <nav className="flex-1 px-2 overflow-y-auto">
             {menuItems.map((item) => (
               <button
                 key={item.name}
@@ -322,7 +398,7 @@ const WalletPage = () => {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
                   activeMenu === item.name 
                     ? 'bg-accent-green text-black' 
-                    : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                    : isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
                 title={!sidebarExpanded ? item.name : ''}
               >
@@ -332,10 +408,14 @@ const WalletPage = () => {
             ))}
           </nav>
 
-          <div className="p-2 border-t border-gray-800">
+          <div className={`p-2 border-t shrink-0 ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <button onClick={toggleDarkMode} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}>
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              {sidebarExpanded && <span className="text-sm font-medium">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+            </button>
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white transition-colors rounded-lg"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors rounded-lg ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
               title={!sidebarExpanded ? 'Log Out' : ''}
             >
               <LogOut size={18} className="flex-shrink-0" />
@@ -345,13 +425,13 @@ const WalletPage = () => {
         </aside>
       )}
 
-      {/* Main Content */}
-      <main className={`flex-1 overflow-auto ${isMobile ? 'pt-14' : ''}`}>
+      {/* Main Content - Scrollable */}
+      <main className={`flex-1 overflow-y-auto ${isMobile ? 'pt-14' : ''}`}>
         {!isMobile && (
-          <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+          <header className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
             <div>
-              <h1 className="text-xl font-semibold text-white">Wallet</h1>
-              <p className="text-gray-500 text-sm">Manage your funds</p>
+              <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Wallet</h1>
+              <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Manage your funds</p>
             </div>
           </header>
         )}
@@ -370,11 +450,11 @@ const WalletPage = () => {
           )}
 
           {/* Wallet Balance Card */}
-          <div className={`bg-dark-800 rounded-xl ${isMobile ? 'p-4' : 'p-6'} border border-gray-800 mb-4`}>
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl ${isMobile ? 'p-4' : 'p-6'} border mb-4`}>
             <div className={`${isMobile ? '' : 'flex items-center justify-between'}`}>
               <div>
-                <p className="text-gray-500 text-sm mb-1">Available Balance</p>
-                <p className={`text-white font-bold ${isMobile ? 'text-2xl' : 'text-4xl'}`}>${wallet?.balance?.toLocaleString() || '0.00'}</p>
+                <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Available Balance</p>
+                <p className={`font-bold ${isMobile ? 'text-2xl' : 'text-4xl'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${wallet?.balance?.toLocaleString() || '0.00'}</p>
                 <div className={`flex ${isMobile ? 'gap-4' : 'gap-6'} mt-3`}>
                   <div>
                     <p className="text-gray-500 text-xs">Pending Deposits</p>
@@ -401,7 +481,7 @@ const WalletPage = () => {
                     setShowWithdrawModal(true)
                     setError('')
                   }}
-                  className={`flex items-center gap-2 bg-dark-700 text-white font-medium ${isMobile ? 'px-4 py-2 text-sm' : 'px-6 py-3'} rounded-lg hover:bg-dark-600 transition-colors border border-gray-700`}
+                  className={`flex items-center gap-2 font-medium ${isMobile ? 'px-4 py-2 text-sm' : 'px-6 py-3'} rounded-lg transition-colors border ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600 border-gray-700' : 'bg-gray-100 text-gray-900 hover:bg-gray-200 border-gray-300'}`}
                 >
                   <ArrowUpCircle size={isMobile ? 16 : 20} /> Withdraw
                 </button>
@@ -410,15 +490,24 @@ const WalletPage = () => {
           </div>
 
           {/* Transaction History */}
-          <div className={`bg-dark-800 rounded-xl ${isMobile ? 'p-4' : 'p-5'} border border-gray-800`}>
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl ${isMobile ? 'p-4' : 'p-5'} border`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-semibold text-lg">Transaction History</h2>
-              <button 
-                onClick={fetchTransactions}
-                className="p-2 hover:bg-dark-700 rounded-lg transition-colors"
-              >
-                <RefreshCw size={18} className={`text-gray-400 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+              <h2 className={`font-semibold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Transaction History</h2>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={downloadTransactionsCSV}
+                  disabled={transactions.length === 0}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm disabled:opacity-50 ${isDarkMode ? 'bg-dark-700 hover:bg-dark-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'}`}
+                >
+                  <Download size={14} /> Download
+                </button>
+                <button 
+                  onClick={fetchTransactions}
+                  className="p-2 hover:bg-dark-700 rounded-lg transition-colors"
+                >
+                  <RefreshCw size={18} className={`text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
 
             {loading ? (
@@ -506,8 +595,8 @@ const WalletPage = () => {
 
       {/* Deposit Modal */}
       {showDepositModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-lg border border-gray-700">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-800 rounded-xl p-4 sm:p-6 w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white font-semibold text-lg">Deposit Funds</h3>
               <button 
@@ -527,7 +616,7 @@ const WalletPage = () => {
             {/* Currency Selection */}
             <div className="mb-4">
               <label className="block text-gray-400 text-sm mb-2">Select Your Currency</label>
-              <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto p-1">
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-32 sm:max-h-40 overflow-y-auto p-1">
                 <button
                   onClick={() => setSelectedCurrency({ currency: 'USD', symbol: '$', rateToUSD: 1, markup: 0 })}
                   className={`p-2 rounded-lg border transition-colors flex flex-col items-center gap-0.5 ${
@@ -585,7 +674,7 @@ const WalletPage = () => {
 
             <div className="mb-4">
               <label className="block text-gray-400 text-sm mb-2">Payment Method</label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 {paymentMethods.map((method) => (
                   <button
                     key={method._id}
@@ -625,7 +714,7 @@ const WalletPage = () => {
               </div>
             )}
 
-            <div className="mb-6">
+            <div className="mb-4">
               <label className="block text-gray-400 text-sm mb-2">Transaction Reference (Optional)</label>
               <input
                 type="text"
@@ -636,6 +725,46 @@ const WalletPage = () => {
               />
             </div>
 
+            {/* Screenshot Upload */}
+            <div className="mb-6">
+              <label className="block text-gray-400 text-sm mb-2">Payment Screenshot (Proof)</label>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleScreenshotChange}
+                accept="image/*"
+                className="hidden"
+              />
+              {screenshotPreview ? (
+                <div className="relative">
+                  <img 
+                    src={screenshotPreview} 
+                    alt="Payment Screenshot" 
+                    className="w-full max-h-48 object-contain rounded-lg border border-gray-700"
+                  />
+                  <button
+                    onClick={() => {
+                      setScreenshot(null)
+                      setScreenshotPreview(null)
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                    }}
+                    className="absolute top-2 right-2 p-1 bg-red-500 rounded-full text-white hover:bg-red-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full p-4 border-2 border-dashed border-gray-700 rounded-lg hover:border-accent-green transition-colors flex flex-col items-center gap-2"
+                >
+                  <Upload size={24} className="text-gray-500" />
+                  <span className="text-gray-400 text-sm">Click to upload payment screenshot</span>
+                  <span className="text-gray-600 text-xs">PNG, JPG up to 5MB</span>
+                </button>
+              )}
+            </div>
+
             {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
             <div className="flex gap-3">
@@ -643,8 +772,12 @@ const WalletPage = () => {
                 onClick={() => {
                   setShowDepositModal(false)
                   setAmount('')
+                  setLocalAmount('')
                   setTransactionRef('')
                   setSelectedPaymentMethod(null)
+                  setSelectedCurrency(null)
+                  setScreenshot(null)
+                  setScreenshotPreview(null)
                   setError('')
                 }}
                 className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
@@ -653,9 +786,16 @@ const WalletPage = () => {
               </button>
               <button
                 onClick={handleDeposit}
-                className="flex-1 bg-accent-green text-black font-medium py-3 rounded-lg hover:bg-accent-green/90 transition-colors"
+                disabled={uploadingScreenshot}
+                className="flex-1 bg-accent-green text-black font-medium py-3 rounded-lg hover:bg-accent-green/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                Submit Deposit
+                {uploadingScreenshot ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" /> Submitting...
+                  </>
+                ) : (
+                  'Submit Deposit'
+                )}
               </button>
             </div>
           </div>
@@ -664,8 +804,8 @@ const WalletPage = () => {
 
       {/* Withdraw Modal */}
       {showWithdrawModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-lg border border-gray-700">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-800 rounded-xl p-4 sm:p-6 w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white font-semibold text-lg">Withdraw Funds</h3>
               <button 

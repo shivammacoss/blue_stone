@@ -171,11 +171,11 @@ router.post('/batch', async (req, res) => {
     const prices = {}
     const now = Date.now()
     
-    // Get prices from cache first
+    // Get prices from cache first (2 second cache for real-time updates)
     const missingSymbols = []
     for (const symbol of symbols) {
       const cached = priceCache.get(symbol)
-      if (cached && (now - cached.time) < 5000) {
+      if (cached && (now - cached.time) < 2000) {
         prices[symbol] = cached.price
       } else {
         missingSymbols.push(symbol)

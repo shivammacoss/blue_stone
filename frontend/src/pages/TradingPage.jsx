@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Search, Star, X, Plus, Minus, Settings, Home, Wallet, LayoutGrid, BarChart3, Pencil, Trophy, AlertTriangle } from 'lucide-react'
+import { Search, Star, X, Plus, Minus, Settings, Home, Wallet, LayoutGrid, BarChart3, Pencil, Trophy, AlertTriangle, Sun, Moon } from 'lucide-react'
 import metaApiService from '../services/metaApi'
 import binanceApiService from '../services/binanceApi'
 import priceStreamService from '../services/priceStream'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
@@ -12,6 +13,7 @@ const TradingPage = () => {
   const { accountId } = useParams()
   const [searchParams] = useSearchParams()
   const accountType = searchParams.get('type') // 'challenge' or null for regular
+  const { isDarkMode, toggleDarkMode } = useTheme()
   
   const [account, setAccount] = useState(null)
   const [challengeAccount, setChallengeAccount] = useState(null)
@@ -82,6 +84,7 @@ const TradingPage = () => {
     floatingPnl: 0
   })
   const [livePrices, setLivePrices] = useState({}) // Store live prices separately
+  const [adminSpreads, setAdminSpreads] = useState({}) // Store admin-set spreads
   
   // Modal states for iOS-style popups
   const [showModifyModal, setShowModifyModal] = useState(false)
@@ -109,8 +112,16 @@ const TradingPage = () => {
     fetchAccount()
     // Fetch live prices in background - don't block UI
     fetchLivePrices()
+    // Fetch admin-set spreads
+    fetchAdminSpreads()
+    
+    // Refresh prices every 2 seconds for real-time P/L updates
+    const priceInterval = setInterval(() => {
+      fetchLivePrices()
+    }, 2000)
     
     return () => {
+      clearInterval(priceInterval)
       metaApiService.disconnect()
     }
   }, [accountId])
@@ -138,6 +149,11 @@ const TradingPage = () => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768
       setIsMobile(mobile)
+      // Keep order panel visible on desktop, hide on mobile by default
+      if (!mobile) {
+        setShowOrderPanel(true)
+        setShowInstruments(true)
+      }
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -437,6 +453,19 @@ const TradingPage = () => {
     return 'Forex'
   }
 
+  // Fetch admin-set spreads for instruments
+  const fetchAdminSpreads = async () => {
+    try {
+      const res = await fetch(`${API_URL}/charges/spreads`)
+      const data = await res.json()
+      if (data.success) {
+        setAdminSpreads(data.spreads || {})
+      }
+    } catch (error) {
+      console.error('Error fetching admin spreads:', error)
+    }
+  }
+
   // Fetch open trades
   const fetchOpenTrades = async () => {
     try {
@@ -603,6 +632,7 @@ const TradingPage = () => {
           quantity: parseFloat(volume),
           bid,
           ask,
+          leverage: leverage, // Send selected leverage
           sl: showStopLoss && stopLoss ? parseFloat(stopLoss) : null,
           tp: showTakeProfit && takeProfit ? parseFloat(takeProfit) : null
         })
@@ -1021,19 +1051,19 @@ const TradingPage = () => {
 
   if (loading) {
     return (
-      <div className="h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Loading...</div>
+      <div className={`h-screen flex items-center justify-center ${isDarkMode ? 'bg-black' : 'bg-gray-100'}`}>
+        <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="h-screen bg-black flex overflow-hidden text-sm">
+    <div className={`h-screen flex overflow-hidden text-sm transition-colors duration-300 ${isDarkMode ? 'bg-black' : 'bg-gray-100'}`}>
       {/* Left Sidebar */}
-      <div className="w-12 bg-[#0a0a0a] border-r border-gray-800 flex flex-col items-center py-3 shrink-0">
+      <div className={`w-12 border-r flex flex-col items-center py-3 shrink-0 ${isDarkMode ? 'bg-[#0a0a0a] border-gray-800' : 'bg-white border-gray-200'}`}>
         <button 
           onClick={() => navigate('/account')}
-          className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-white hover:bg-[#1a1a1a] rounded-lg mb-2 transition-colors"
+          className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 transition-colors ${isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
           title="Home"
         >
           <Home size={20} />
@@ -1041,7 +1071,7 @@ const TradingPage = () => {
         <button 
           onClick={() => setShowInstruments(!showInstruments)}
           className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 transition-colors ${
-            showInstruments ? 'text-white bg-[#1a1a1a]' : 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]'
+            showInstruments ? (isDarkMode ? 'text-white bg-[#1a1a1a]' : 'text-gray-900 bg-gray-100') : (isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100')
           }`}
           title="Instruments"
         >
@@ -1049,16 +1079,17 @@ const TradingPage = () => {
         </button>
         <button 
           onClick={() => navigate('/account')}
-          className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-white hover:bg-[#1a1a1a] rounded-lg mb-2 transition-colors"
+          className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 transition-colors ${isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
           title="Wallet"
         >
           <Wallet size={20} />
         </button>
         <button 
-          className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-white hover:bg-[#1a1a1a] rounded-lg mb-2 transition-colors"
-          title="Charts"
+          onClick={toggleDarkMode}
+          className={`w-9 h-9 flex items-center justify-center rounded-lg mb-2 transition-colors ${isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+          title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
         >
-          <BarChart3 size={20} />
+          {isDarkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} />}
         </button>
         <div className="flex-1" />
         <div className="w-6 h-6 rounded bg-red-500 flex items-center justify-center text-white text-xs font-bold cursor-pointer hover:bg-red-600" onClick={() => setShowInstruments(false)}>
@@ -1114,8 +1145,8 @@ const TradingPage = () => {
         )}
         
         {/* Top Header */}
-        <header className="h-10 sm:h-8 bg-black border-b border-gray-800 flex items-center px-2 sm:px-3 shrink-0">
-          <span className="text-white font-medium text-sm sm:text-base">{selectedInstrument.symbol}</span>
+        <header className={`h-10 sm:h-8 border-b flex items-center px-2 sm:px-3 shrink-0 ${isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'}`}>
+          <span className={`font-medium text-sm sm:text-base ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInstrument.symbol}</span>
           {!isMobile && (
             <>
               <span className={`ml-3 text-xs ${accountType === 'challenge' ? 'text-yellow-500' : 'text-teal-400'}`}>
@@ -1159,17 +1190,24 @@ const TradingPage = () => {
           <button onClick={() => setShowOrderPanel(!showOrderPanel)} className="ml-1 sm:ml-2 text-gray-400 hover:text-white">
             <Settings size={16} />
           </button>
+          <button 
+            onClick={toggleDarkMode}
+            className={`ml-1 sm:ml-2 p-1.5 rounded transition-colors ${isDarkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-blue-500 hover:text-blue-400'}`}
+            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         </header>
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Instruments Panel */}
           {showInstruments && (
-            <div className={`${isMobile ? 'absolute inset-0 z-20' : 'w-[280px]'} bg-[#0d0d0d] border-r border-gray-800 flex flex-col shrink-0`}>
+            <div className={`${isMobile ? 'absolute inset-0 z-20' : 'w-[280px]'} border-r flex flex-col shrink-0 ${isDarkMode ? 'bg-[#0d0d0d] border-gray-800' : 'bg-white border-gray-200'}`}>
               {/* Header */}
-              <div className="px-3 py-3 border-b border-gray-800 flex items-center justify-between">
-                <span className="text-white text-sm font-medium">Instruments</span>
-                <button onClick={() => setShowInstruments(false)} className="text-gray-500 hover:text-white">
+              <div className={`px-3 py-3 border-b flex items-center justify-between ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+                <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Instruments</span>
+                <button onClick={() => setShowInstruments(false)} className={isDarkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'}>
                   <X size={16} />
                 </button>
               </div>
@@ -1182,13 +1220,13 @@ const TradingPage = () => {
                     placeholder="Search instruments"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-gray-700 rounded pl-9 pr-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-gray-600"
+                    className={`w-full rounded pl-9 pr-3 py-2 text-sm placeholder-gray-500 focus:outline-none border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white focus:border-gray-600' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-gray-400'}`}
                   />
                 </div>
               </div>
               
               {/* Category Tabs */}
-              <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 overflow-x-auto">
+              <div className={`flex items-center gap-1 px-3 py-2 border-b overflow-x-auto ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                 <button className="text-gray-600 hover:text-yellow-500 shrink-0">
                   <Star size={14} />
                 </button>
@@ -1222,13 +1260,15 @@ const TradingPage = () => {
                     <button
                       key={inst.symbol}
                       onClick={() => handleInstrumentClick(inst)}
-                      className={`w-full px-3 py-2.5 my-1 flex items-center rounded-lg border border-gray-700 hover:border-gray-600 hover:bg-[#1a1a1a] transition-colors ${
-                        selectedInstrument.symbol === inst.symbol ? 'bg-[#1a1a1a] border-blue-500' : ''
+                      className={`w-full px-3 py-2.5 my-1 flex items-center rounded-lg border transition-colors ${
+                        selectedInstrument.symbol === inst.symbol 
+                          ? (isDarkMode ? 'bg-[#1a1a1a] border-blue-500' : 'bg-blue-50 border-blue-500')
+                          : (isDarkMode ? 'border-gray-700 hover:border-gray-600 hover:bg-[#1a1a1a]' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50')
                       }`}
                     >
                       <Star size={12} className={`shrink-0 mr-2 ${inst.starred ? 'text-yellow-500 fill-yellow-500' : 'text-gray-700'}`} />
                       <div className="text-left min-w-[55px]">
-                        <div className="text-white text-xs font-medium">{inst.symbol}</div>
+                        <div className={`text-xs font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{inst.symbol}</div>
                         <div className="text-green-500 text-[10px]">+{inst.change?.toFixed(2) || '0.00'}%</div>
                       </div>
                       <div className="flex-1" />
@@ -1239,11 +1279,17 @@ const TradingPage = () => {
                         <div className="text-gray-600 text-[9px]">Bid</div>
                       </div>
                       <div className="bg-[#2a2a2a] px-1.5 py-0.5 rounded text-cyan-400 text-[10px] font-medium min-w-[28px] text-center mx-2">
-                        {inst.spread > 0 ? (
-                          // Convert spread to pips: forex pairs use 0.0001, JPY pairs use 0.01, metals/crypto use actual spread
+                        {/* Show admin-set spread if available, otherwise show market spread */}
+                        {adminSpreads[inst.symbol]?.spread > 0 ? (
+                          // Convert admin spread to pips for display
+                          inst.symbol.includes('JPY') ? (adminSpreads[inst.symbol].spread * 100).toFixed(1) :
+                          inst.bid > 100 ? adminSpreads[inst.symbol].spread.toFixed(2) :
+                          (adminSpreads[inst.symbol].spread * 10000).toFixed(1)
+                        ) : inst.spread > 0 ? (
+                          // Convert market spread to pips
                           inst.symbol.includes('JPY') ? (inst.spread * 100).toFixed(1) :
-                          inst.bid > 100 ? inst.spread.toFixed(2) : // Metals/Crypto - show actual spread
-                          (inst.spread * 10000).toFixed(1) // Forex - convert to pips
+                          inst.bid > 100 ? inst.spread.toFixed(2) :
+                          (inst.spread * 10000).toFixed(1)
                         ) : '-'}
                       </div>
                       <div className="text-right w-14">
@@ -1269,9 +1315,9 @@ const TradingPage = () => {
           )}
 
         {/* Center - Chart Area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#0d0d0d]">
+        <div className={`flex-1 flex flex-col min-w-0 ${isDarkMode ? 'bg-[#0d0d0d]' : 'bg-gray-50'}`}>
           {/* Symbol Tab Bar */}
-          <div className="h-9 bg-[#0d0d0d] border-b border-gray-800 flex items-center px-2 shrink-0 gap-1">
+          <div className={`h-9 border-b flex items-center px-2 shrink-0 gap-1 ${isDarkMode ? 'bg-[#0d0d0d] border-gray-800' : 'bg-white border-gray-200'}`}>
             {openTabs.map(tab => (
               <div
                 key={tab.symbol}
@@ -1279,7 +1325,7 @@ const TradingPage = () => {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors ${
                   activeTab === tab.symbol 
                     ? 'bg-blue-600 text-white' 
-                    : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#252525] hover:text-white'
+                    : isDarkMode ? 'bg-[#1a1a1a] text-gray-400 hover:bg-[#252525] hover:text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900'
                 }`}
               >
                 <span className="text-sm font-medium">{tab.symbol}</span>
@@ -1293,16 +1339,16 @@ const TradingPage = () => {
                 )}
               </div>
             ))}
-            <button className="ml-1 text-gray-500 hover:text-white p-1.5 hover:bg-[#1a1a1a] rounded">
+            <button className={`ml-1 p-1.5 rounded ${isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
               <Plus size={16} />
             </button>
           </div>
 
           {/* Chart - Always visible TradingView Advanced Chart with Side Toolbar */}
-          <div className="flex-1 min-h-0 bg-[#0d0d0d] relative">
+          <div className={`flex-1 min-h-0 relative ${isDarkMode ? 'bg-[#0d0d0d]' : 'bg-white'}`}>
             <iframe
-              key={selectedInstrument.symbol}
-              src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=5&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=0d0d0d&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&showpopupbutton=1&studies_overrides={}&overrides={}&enabled_features=["left_toolbar","header_widget"]&disabled_features=[]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=0`}
+              key={`${selectedInstrument.symbol}-${isDarkMode}`}
+              src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=5&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=1&showpopupbutton=1&studies_overrides={}&overrides={}&enabled_features=["left_toolbar","header_widget"]&disabled_features=[]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=0`}
               style={{ width: '100%', height: '100%', border: 'none' }}
               allowFullScreen
               title="TradingView Chart"
@@ -1310,8 +1356,8 @@ const TradingPage = () => {
           </div>
 
           {/* Positions Panel */}
-          <div className={`${isMobile ? 'h-32' : 'h-44'} bg-[#0d0d0d] border-t border-gray-800 flex flex-col shrink-0`}>
-            <div className="h-10 flex items-center justify-between px-2 sm:px-4 border-b border-gray-800 overflow-x-auto">
+          <div className={`${isMobile ? 'h-32' : 'h-44'} border-t flex flex-col shrink-0 ${isDarkMode ? 'bg-[#0d0d0d] border-gray-800' : 'bg-white border-gray-200'}`}>
+            <div className={`h-10 flex items-center justify-between px-2 sm:px-4 border-b overflow-x-auto ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
               <div className="flex gap-2 sm:gap-6">
                 {[
                   { name: 'Positions', count: openTrades.length },
@@ -1322,7 +1368,7 @@ const TradingPage = () => {
                   <button
                     key={tab.name}
                     onClick={() => setActivePositionTab(tab.name)}
-                    className={`text-xs sm:text-sm whitespace-nowrap ${activePositionTab === tab.name ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                    className={`text-xs sm:text-sm whitespace-nowrap ${activePositionTab === tab.name ? (isDarkMode ? 'text-white' : 'text-gray-900') : 'text-gray-500 hover:text-white'}`}
                   >
                     {isMobile ? `${tab.name.split(' ')[0]}(${tab.count})` : `${tab.name}(${tab.count})`}
                   </button>
@@ -1371,7 +1417,7 @@ const TradingPage = () => {
             <div className="flex-1 overflow-auto">
               {activePositionTab === 'Positions' && (
               <table className="w-full text-sm">
-                <thead className="text-gray-500 border-b border-gray-800 sticky top-0 bg-[#0d0d0d]">
+                <thead className={`text-gray-500 border-b sticky top-0 ${isDarkMode ? 'border-gray-800 bg-[#0d0d0d]' : 'border-gray-200 bg-white'}`}>
                   <tr>
                     <th className="text-left py-2 px-3 font-normal">Time</th>
                     <th className="text-left py-2 px-3 font-normal">Symbol</th>
@@ -1561,24 +1607,24 @@ const TradingPage = () => {
 
         {/* Right Panel - Order */}
         {showOrderPanel && (
-          <div className={`${isMobile ? 'absolute inset-0 z-20' : 'w-72'} bg-[#0d0d0d] border-l border-gray-800 flex flex-col shrink-0`}>
-            <div className="px-4 py-4 border-b border-gray-800 flex items-center justify-between">
-              <span className="text-white text-base font-medium">{selectedInstrument.symbol} order</span>
-              <button onClick={() => setShowOrderPanel(false)} className="text-gray-500 hover:text-white">
+          <div className={`${isMobile ? 'absolute inset-0 z-20' : 'w-72'} border-l flex flex-col shrink-0 ${isDarkMode ? 'bg-[#0d0d0d] border-gray-800' : 'bg-white border-gray-200'}`}>
+            <div className={`px-4 py-4 border-b flex items-center justify-between ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+              <span className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInstrument.symbol} order</span>
+              <button onClick={() => setShowOrderPanel(false)} className={isDarkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'}>
                 <X size={18} />
               </button>
             </div>
 
-            <div className="flex border-b border-gray-800">
+            <div className={`flex border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
               <button
                 onClick={() => setOrderTab('Market')}
-                className={`flex-1 py-3 text-sm font-medium ${orderTab === 'Market' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500'}`}
+                className={`flex-1 py-3 text-sm font-medium ${orderTab === 'Market' ? (isDarkMode ? 'text-white' : 'text-gray-900') + ' border-b-2 border-blue-500' : 'text-gray-500'}`}
               >
                 Market
               </button>
               <button
                 onClick={() => setOrderTab('Pending')}
-                className={`flex-1 py-3 text-sm font-medium ${orderTab === 'Pending' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500'}`}
+                className={`flex-1 py-3 text-sm font-medium ${orderTab === 'Pending' ? (isDarkMode ? 'text-white' : 'text-gray-900') + ' border-b-2 border-blue-500' : 'text-gray-500'}`}
               >
                 Pending
               </button>
@@ -1587,10 +1633,23 @@ const TradingPage = () => {
             {orderTab === 'Market' ? (
               <>
                 <div className="p-3 flex-1 overflow-y-auto">
-                  {/* Account Leverage Display */}
-                  <div className="flex items-center justify-between bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 mb-3">
+                  {/* Leverage Selector */}
+                  <div className={`flex items-center justify-between rounded px-3 py-2 mb-3 border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700' : 'bg-gray-50 border-gray-300'}`}>
                     <span className="text-gray-400 text-xs">Leverage</span>
-                    <span className="text-yellow-500 font-semibold text-sm">{account?.leverage || '1:100'}</span>
+                    <select
+                      value={leverage}
+                      onChange={(e) => setLeverage(e.target.value)}
+                      className="bg-transparent text-yellow-500 font-semibold text-sm focus:outline-none cursor-pointer"
+                    >
+                      <option value="1:10" className="bg-dark-800">1:10</option>
+                      <option value="1:20" className="bg-dark-800">1:20</option>
+                      <option value="1:50" className="bg-dark-800">1:50</option>
+                      <option value="1:100" className="bg-dark-800">1:100</option>
+                      <option value="1:200" className="bg-dark-800">1:200</option>
+                      <option value="1:500" className="bg-dark-800">1:500</option>
+                      <option value="1:1000" className="bg-dark-800">1:1000</option>
+                      <option value="1:2000" className="bg-dark-800">1:2000</option>
+                    </select>
                   </div>
 
                   {/* One-Click Buy/Sell Buttons */}
@@ -1632,7 +1691,7 @@ const TradingPage = () => {
                       className={`flex-1 rounded py-1.5 text-center text-xs transition-colors ${
                         selectedSide === 'SELL' 
                           ? 'bg-red-500/20 border border-red-500 text-red-400' 
-                          : 'bg-[#1a1a1a] border border-gray-600 text-gray-400 hover:border-red-500/50'
+                          : isDarkMode ? 'bg-[#1a1a1a] border border-gray-600 text-gray-400 hover:border-red-500/50' : 'bg-gray-50 border border-gray-300 text-gray-600 hover:border-red-500/50'
                       }`}
                     >
                       Sell Side
@@ -1642,7 +1701,7 @@ const TradingPage = () => {
                       className={`flex-1 rounded py-1.5 text-center text-xs transition-colors ${
                         selectedSide === 'BUY' 
                           ? 'bg-blue-500/20 border border-blue-500 text-blue-400' 
-                          : 'bg-[#1a1a1a] border border-gray-600 text-gray-400 hover:border-blue-500/50'
+                          : isDarkMode ? 'bg-[#1a1a1a] border border-gray-600 text-gray-400 hover:border-blue-500/50' : 'bg-gray-50 border border-gray-300 text-gray-600 hover:border-blue-500/50'
                       }`}
                     >
                       Buy Side
@@ -1651,18 +1710,18 @@ const TradingPage = () => {
 
                   {/* Volume */}
                   <div className="mb-3">
-                    <label className="text-white text-xs mb-1 block">Volume</label>
-                    <div className="flex items-center bg-[#1a1a1a] border border-gray-700 rounded">
-                      <button onClick={() => setVolume((Math.max(0.01, parseFloat(volume) - 0.01)).toFixed(2))} className="px-3 py-2 text-gray-400 hover:text-white border-r border-gray-700">
+                    <label className={`text-xs mb-1 block ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Volume</label>
+                    <div className={`flex items-center rounded border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700' : 'bg-gray-50 border-gray-300'}`}>
+                      <button onClick={() => setVolume((Math.max(0.01, parseFloat(volume) - 0.01)).toFixed(2))} className={`px-3 py-2 border-r ${isDarkMode ? 'text-gray-400 hover:text-white border-gray-700' : 'text-gray-600 hover:text-gray-900 border-gray-300'}`}>
                         <Minus size={14} />
                       </button>
                       <input
                         type="text"
                         value={volume}
                         onChange={(e) => setVolume(e.target.value)}
-                        className="flex-1 bg-transparent text-center text-white text-sm font-medium focus:outline-none py-2"
+                        className={`flex-1 bg-transparent text-center text-sm font-medium focus:outline-none py-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                       />
-                      <button onClick={() => setVolume((parseFloat(volume) + 0.01).toFixed(2))} className="px-3 py-2 text-gray-400 hover:text-white border-l border-gray-700">
+                      <button onClick={() => setVolume((parseFloat(volume) + 0.01).toFixed(2))} className={`px-3 py-2 border-l ${isDarkMode ? 'text-gray-400 hover:text-white border-gray-700' : 'text-gray-600 hover:text-gray-900 border-gray-300'}`}>
                         <Plus size={14} />
                       </button>
                     </div>
@@ -1671,19 +1730,23 @@ const TradingPage = () => {
 
                   {/* Leverage */}
                   <div className="mb-3">
-                    <div className="text-gray-400 text-xs mb-1">Leverage (Max: 100x)</div>
+                    <div className="text-gray-400 text-xs mb-1">Leverage (Max: {account?.leverage || '1:100'})</div>
                     <div className="flex gap-2">
                       <select 
                         value={leverage}
                         onChange={(e) => setLeverage(e.target.value)}
-                        className="flex-1 bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none"
+                        className={`flex-1 rounded px-3 py-2 text-sm focus:outline-none border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                       >
-                        <option value="1:50">1:50</option>
-                        <option value="1:100">1:100</option>
-                        <option value="1:200">1:200</option>
-                        <option value="1:500">1:500</option>
+                        {(() => {
+                          const maxLev = parseInt((account?.leverage || '1:100').replace('1:', '')) || 100
+                          const options = [50, 100, 200, 500, 1000, 2000, 5000].filter(l => l <= maxLev)
+                          if (!options.includes(maxLev)) options.push(maxLev)
+                          return options.sort((a, b) => a - b).map(l => (
+                            <option key={l} value={`1:${l}`}>1:{l}</option>
+                          ))
+                        })()}
                       </select>
-                      <div className="bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-green-500 text-sm font-medium">
+                      <div className={`rounded px-3 py-2 text-green-500 text-sm font-medium border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700' : 'bg-gray-50 border-gray-300'}`}>
                         ${(() => {
                           const leverageNum = parseInt(leverage.replace('1:', '')) || 100
                           const contractSize = ['BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD'].includes(selectedInstrument.symbol) ? 1 
@@ -1697,6 +1760,12 @@ const TradingPage = () => {
                     </div>
                     <div className="text-gray-500 text-[10px] mt-1">
                       Margin Required | Free: ${accountSummary.freeMargin?.toFixed(2) || '0.00'}
+                    </div>
+                    <div className="text-blue-400 text-[10px] mt-0.5">
+                      Buying Power: ${(() => {
+                        const leverageNum = parseInt(leverage.replace('1:', '')) || 100
+                        return ((accountSummary.equity || 0) * leverageNum).toLocaleString()
+                      })()}
                     </div>
                   </div>
 
@@ -1755,21 +1824,21 @@ const TradingPage = () => {
                   </div>
 
                   {/* Trading Charges */}
-                  <div className="bg-[#1a1a1a] rounded p-3 mb-3">
-                    <div className="text-white text-xs font-medium mb-2">Trading Charges</div>
+                  <div className={`rounded p-3 mb-3 ${isDarkMode ? 'bg-[#1a1a1a]' : 'bg-gray-50 border border-gray-200'}`}>
+                    <div className={`text-xs font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Trading Charges</div>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-gray-400">Spread</span>
-                      <span className="text-white">10 pips</span>
+                      <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>10 pips</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-400">Commission</span>
-                      <span className="text-white">$0.10 ($10/lot)</span>
+                      <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>$0.10 ($10/lot)</span>
                     </div>
                   </div>
 
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-gray-400 text-xs">Margin Required</span>
-                    <span className="text-white text-base font-semibold">${calculateMargin()}</span>
+                    <span className={`text-base font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${calculateMargin()}</span>
                   </div>
                 </div>
 
@@ -1785,7 +1854,7 @@ const TradingPage = () => {
                   </div>
                 )}
 
-                <div className="p-3 border-t border-gray-800">
+                <div className={`p-3 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                   <button 
                     onClick={() => executeMarketOrder(selectedSide)}
                     disabled={isExecutingTrade}
@@ -1819,8 +1888,8 @@ const TradingPage = () => {
                                 ? 'bg-blue-600 text-white' 
                                 : 'bg-red-600 text-white'
                               : type.includes('BUY')
-                                ? 'bg-[#1a1a1a] border border-blue-500/30 text-blue-400 hover:bg-blue-500/10'
-                                : 'bg-[#1a1a1a] border border-red-500/30 text-red-400 hover:bg-red-500/10'
+                                ? isDarkMode ? 'bg-[#1a1a1a] border border-blue-500/30 text-blue-400 hover:bg-blue-500/10' : 'bg-gray-50 border border-blue-500/30 text-blue-600 hover:bg-blue-500/10'
+                                : isDarkMode ? 'bg-[#1a1a1a] border border-red-500/30 text-red-400 hover:bg-red-500/10' : 'bg-gray-50 border border-red-500/30 text-red-600 hover:bg-red-500/10'
                           }`}
                         >
                           {type}
@@ -1837,24 +1906,24 @@ const TradingPage = () => {
                       value={entryPrice}
                       onChange={(e) => setEntryPrice(e.target.value)}
                       placeholder="Enter price"
-                      className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2.5 text-white text-sm focus:outline-none focus:border-gray-600"
+                      className={`w-full rounded px-3 py-2.5 text-sm focus:outline-none border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white focus:border-gray-600' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-gray-400'}`}
                     />
                   </div>
 
                   {/* Order Volume */}
                   <div className="mb-3">
                     <div className="text-gray-400 text-xs mb-1">Order volume</div>
-                    <div className="flex items-center bg-[#1a1a1a] border border-gray-700 rounded">
+                    <div className={`flex items-center rounded border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700' : 'bg-gray-50 border-gray-300'}`}>
                       <input
                         type="text"
                         value={volume}
                         onChange={(e) => setVolume(e.target.value)}
-                        className="flex-1 bg-transparent text-center text-white text-sm font-medium focus:outline-none py-2"
+                        className={`flex-1 bg-transparent text-center text-sm font-medium focus:outline-none py-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                       />
-                      <button onClick={() => setVolume((Math.max(0.01, parseFloat(volume) - 0.01)).toFixed(2))} className="px-3 py-2 text-gray-400 hover:text-white border-l border-gray-700">
+                      <button onClick={() => setVolume((Math.max(0.01, parseFloat(volume) - 0.01)).toFixed(2))} className={`px-3 py-2 border-l ${isDarkMode ? 'text-gray-400 hover:text-white border-gray-700' : 'text-gray-600 hover:text-gray-900 border-gray-300'}`}>
                         <Minus size={14} />
                       </button>
-                      <button onClick={() => setVolume((parseFloat(volume) + 0.01).toFixed(2))} className="px-3 py-2 text-gray-400 hover:text-white border-l border-gray-700">
+                      <button onClick={() => setVolume((parseFloat(volume) + 0.01).toFixed(2))} className={`px-3 py-2 border-l ${isDarkMode ? 'text-gray-400 hover:text-white border-gray-700' : 'text-gray-600 hover:text-gray-900 border-gray-300'}`}>
                         <Plus size={14} />
                       </button>
                     </div>
@@ -1862,19 +1931,23 @@ const TradingPage = () => {
 
                   {/* Leverage */}
                   <div className="mb-3">
-                    <div className="text-gray-400 text-xs mb-1">Leverage (Max: 100x)</div>
+                    <div className="text-gray-400 text-xs mb-1">Leverage (Max: {account?.leverage || '1:100'})</div>
                     <div className="flex gap-2">
                       <select 
                         value={leverage}
                         onChange={(e) => setLeverage(e.target.value)}
-                        className="flex-1 bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none"
+                        className={`flex-1 rounded px-3 py-2 text-sm focus:outline-none border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                       >
-                        <option value="1:50">1:50</option>
-                        <option value="1:100">1:100</option>
-                        <option value="1:200">1:200</option>
-                        <option value="1:500">1:500</option>
+                        {(() => {
+                          const maxLev = parseInt((account?.leverage || '1:100').replace('1:', '')) || 100
+                          const options = [50, 100, 200, 500, 1000, 2000, 5000].filter(l => l <= maxLev)
+                          if (!options.includes(maxLev)) options.push(maxLev)
+                          return options.sort((a, b) => a - b).map(l => (
+                            <option key={l} value={`1:${l}`}>1:{l}</option>
+                          ))
+                        })()}
                       </select>
-                      <div className="bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-green-500 text-sm">$0</div>
+                      <div className={`rounded px-3 py-2 text-green-500 text-sm border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700' : 'bg-gray-50 border-gray-300'}`}>$0</div>
                     </div>
                     <div className="text-gray-500 text-[10px] mt-1">Trading power: $0.00 × 100 = $0</div>
                   </div>
@@ -1895,7 +1968,7 @@ const TradingPage = () => {
                           value={takeProfit}
                           onChange={(e) => setTakeProfit(e.target.value)}
                           placeholder="Price"
-                          className="flex-1 bg-[#1a1a1a] border border-green-500/50 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500"
+                          className={`flex-1 rounded px-3 py-2 text-sm focus:outline-none border border-green-500/50 focus:border-green-500 ${isDarkMode ? 'bg-[#1a1a1a] text-white' : 'bg-gray-50 text-gray-900'}`}
                         />
                       </div>
                     )}
@@ -1917,22 +1990,22 @@ const TradingPage = () => {
                           value={stopLoss}
                           onChange={(e) => setStopLoss(e.target.value)}
                           placeholder="Price"
-                          className="flex-1 bg-[#1a1a1a] border border-red-500/50 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"
+                          className={`flex-1 rounded px-3 py-2 text-sm focus:outline-none border border-red-500/50 focus:border-red-500 ${isDarkMode ? 'bg-[#1a1a1a] text-white' : 'bg-gray-50 text-gray-900'}`}
                         />
                       </div>
                     )}
                   </div>
 
                   {/* Trading Charges */}
-                  <div className="bg-[#1a1a1a] rounded p-3 mb-3">
-                    <div className="text-white text-xs font-medium mb-2">Trading Charges</div>
+                  <div className={`rounded p-3 mb-3 ${isDarkMode ? 'bg-[#1a1a1a]' : 'bg-gray-50 border border-gray-200'}`}>
+                    <div className={`text-xs font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Trading Charges</div>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-gray-400">Spread</span>
-                      <span className="text-white">10 pips</span>
+                      <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>10 pips</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-400">Commission</span>
-                      <span className="text-white">$0.10 ($10/lot)</span>
+                      <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>$0.10 ($10/lot)</span>
                     </div>
                   </div>
                 </div>
@@ -1949,7 +2022,7 @@ const TradingPage = () => {
                   </div>
                 )}
 
-                <div className="p-3 border-t border-gray-800">
+                <div className={`p-3 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                   <button 
                     onClick={executePendingOrder}
                     disabled={isExecutingTrade}
@@ -1968,9 +2041,9 @@ const TradingPage = () => {
         </div>
 
         {/* Bottom Status Bar */}
-        <footer className="h-6 bg-black border-t border-gray-800 flex items-center px-2 sm:px-3 text-[10px] sm:text-xs shrink-0 overflow-x-auto">
-          <span className="text-white font-medium shrink-0">{selectedInstrument.symbol}</span>
-          <span className="text-gray-500 ml-2 sm:ml-4 shrink-0">Bal: <span className="text-white">${accountSummary.balance?.toFixed(2) || '0.00'}</span></span>
+        <footer className={`h-6 border-t flex items-center px-2 sm:px-3 text-[10px] sm:text-xs shrink-0 overflow-x-auto ${isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'}`}>
+          <span className={`font-medium shrink-0 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInstrument.symbol}</span>
+          <span className="text-gray-500 ml-2 sm:ml-4 shrink-0">Bal: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>${accountSummary.balance?.toFixed(2) || '0.00'}</span></span>
           {!isMobile && (
             <>
               <span className="text-gray-500 ml-4 shrink-0">Credit: <span className="text-purple-400">${accountSummary.credit?.toFixed(2) || '0.00'}</span></span>

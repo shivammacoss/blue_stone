@@ -11,7 +11,7 @@ const router = express.Router()
 router.get('/user/:userId', async (req, res) => {
   try {
     const accounts = await TradingAccount.find({ userId: req.params.userId })
-      .populate('accountTypeId', 'name description')
+      .populate('accountTypeId', 'name description minDeposit leverage exposureLimit isDemo')
       .sort({ createdAt: -1 })
     res.json({ success: true, accounts })
   } catch (error) {
@@ -58,30 +58,55 @@ router.post('/', async (req, res) => {
     // Generate unique account ID
     const accountId = await TradingAccount.generateAccountId()
 
-    // Create trading account with ZERO balance - user must deposit separately
+    // Determine initial balance - Demo accounts get auto-funded with non-refundable balance
+    const initialBalance = accountType.isDemo ? (accountType.demoBalance || 10000) : 0
+
+    // Create trading account
     const tradingAccount = new TradingAccount({
       userId,
       accountTypeId,
       accountId,
       pin,
-      balance: 0, // Start with zero balance - no auto fund
+      balance: initialBalance,
+      credit: accountType.isDemo ? initialBalance : 0, // Demo balance is non-refundable (credit)
       leverage: accountType.leverage,
-      exposureLimit: accountType.exposureLimit
+      exposureLimit: accountType.exposureLimit,
+      isDemo: accountType.isDemo || false
     })
 
     await tradingAccount.save()
 
+    // Log demo account creation
+    if (accountType.isDemo) {
+      await Transaction.create({
+        userId,
+        type: 'Demo_Credit',
+        amount: initialBalance,
+        paymentMethod: 'System',
+        tradingAccountId: tradingAccount._id,
+        tradingAccountName: tradingAccount.accountId,
+        status: 'Completed',
+        transactionRef: `DEMO${Date.now()}`,
+        notes: 'Non-refundable demo account credit'
+      })
+    }
+
     res.status(201).json({ 
-      message: 'Trading account created successfully', 
+      success: true,
+      message: accountType.isDemo 
+        ? `Demo account created with $${initialBalance} non-refundable balance` 
+        : 'Trading account created successfully', 
       account: {
+        _id: tradingAccount._id,
         accountId: tradingAccount.accountId,
         balance: tradingAccount.balance,
         leverage: tradingAccount.leverage,
-        status: tradingAccount.status
+        status: tradingAccount.status,
+        isDemo: accountType.isDemo || false
       }
     })
   } catch (error) {
-    res.status(500).json({ message: 'Error creating account', error: error.message })
+    res.status(500).json({ success: false, message: 'Error creating account', error: error.message })
   }
 })
 
@@ -380,6 +405,166 @@ router.post('/account-transfer', async (req, res) => {
   } catch (error) {
     console.error('Account transfer error:', error)
     res.status(500).json({ message: 'Error transferring funds', error: error.message })
+  }
+})
+
+// PUT /api/trading-accounts/:id/archive - Archive a trading account
+router.put('/:id/archive', async (req, res) => {
+  try {
+    const account = await TradingAccount.findById(req.params.id)
+    
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' })
+    }
+
+    // Check if account has open trades
+    const Trade = (await import('../models/Trade.js')).default
+    const openTrades = await Trade.countDocuments({ tradingAccountId: account._id, status: 'OPEN' })
+    
+    if (openTrades > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot archive account with ${openTrades} open trade(s). Please close all trades first.` 
+      })
+    }
+
+    // Archive the account
+    account.status = 'Archived'
+    await account.save()
+
+    res.json({ 
+      success: true, 
+      message: 'Account archived successfully',
+      account
+    })
+  } catch (error) {
+    console.error('Archive account error:', error)
+    res.status(500).json({ success: false, message: 'Error archiving account', error: error.message })
+  }
+})
+
+// PUT /api/trading-accounts/:id/unarchive - Restore an archived account
+router.put('/:id/unarchive', async (req, res) => {
+  try {
+    const account = await TradingAccount.findById(req.params.id)
+    
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' })
+    }
+
+    if (account.status !== 'Archived') {
+      return res.status(400).json({ success: false, message: 'Account is not archived' })
+    }
+
+    // Restore the account
+    account.status = 'Active'
+    await account.save()
+
+    res.json({ 
+      success: true, 
+      message: 'Account restored successfully',
+      account
+    })
+  } catch (error) {
+    console.error('Unarchive account error:', error)
+    res.status(500).json({ success: false, message: 'Error restoring account', error: error.message })
+  }
+})
+
+// DELETE /api/trading-accounts/:id - Permanently delete an account
+router.delete('/:id', async (req, res) => {
+  try {
+    const account = await TradingAccount.findById(req.params.id)
+    
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' })
+    }
+
+    // Only allow deletion of archived accounts
+    if (account.status !== 'Archived') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Only archived accounts can be permanently deleted. Archive the account first.' 
+      })
+    }
+
+    // Check for any trades
+    const Trade = (await import('../models/Trade.js')).default
+    const tradeCount = await Trade.countDocuments({ tradingAccountId: account._id })
+    
+    if (tradeCount > 0) {
+      // Delete all trades for this account
+      await Trade.deleteMany({ tradingAccountId: account._id })
+    }
+
+    // Delete the account
+    await TradingAccount.findByIdAndDelete(req.params.id)
+
+    res.json({ 
+      success: true, 
+      message: 'Account deleted permanently'
+    })
+  } catch (error) {
+    console.error('Delete account error:', error)
+    res.status(500).json({ success: false, message: 'Error deleting account', error: error.message })
+  }
+})
+
+// POST /api/trading-accounts/:id/reset-demo - Reset demo account to initial balance
+router.post('/:id/reset-demo', async (req, res) => {
+  try {
+    const account = await TradingAccount.findById(req.params.id).populate('accountTypeId')
+    
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' })
+    }
+
+    // Check if this is a demo account
+    if (!account.isDemo) {
+      return res.status(400).json({ success: false, message: 'Only demo accounts can be reset' })
+    }
+
+    // Close all open trades for this account
+    const Trade = (await import('../models/Trade.js')).default
+    await Trade.updateMany(
+      { tradingAccountId: account._id, status: 'OPEN' },
+      { 
+        status: 'CLOSED', 
+        closedBy: 'DEMO_RESET',
+        closedAt: new Date(),
+        realizedPnl: 0
+      }
+    )
+
+    // Get initial demo balance from account type
+    const initialBalance = account.accountTypeId?.demoBalance || 10000
+
+    // Reset account balance
+    account.balance = initialBalance
+    account.credit = initialBalance
+    await account.save()
+
+    // Log the reset
+    await Transaction.create({
+      userId: account.userId,
+      type: 'Demo_Reset',
+      amount: initialBalance,
+      paymentMethod: 'System',
+      tradingAccountId: account._id,
+      tradingAccountName: account.accountId,
+      status: 'Completed',
+      transactionRef: `DEMORESET${Date.now()}`,
+      notes: 'Demo account reset to initial balance'
+    })
+
+    res.json({ 
+      success: true, 
+      message: `Demo account reset successfully. Balance: $${initialBalance}`,
+      balance: initialBalance
+    })
+  } catch (error) {
+    console.error('Demo reset error:', error)
+    res.status(500).json({ success: false, message: 'Error resetting demo account', error: error.message })
   }
 })
 

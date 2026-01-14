@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { 
   LayoutDashboard, User, Wallet, Users, Copy, UserCircle, HelpCircle, FileText, LogOut,
   ChevronDown, ChevronRight, BookOpen, PlayCircle, DollarSign, TrendingUp, Shield, Settings, Trophy,
-  ArrowLeft, Home
+  ArrowLeft, Home, Sun, Moon
 } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
 const InstructionsPage = () => {
   const navigate = useNavigate()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [expandedSection, setExpandedSection] = useState('getting-started')
   const [challengeModeEnabled, setChallengeModeEnabled] = useState(false)
@@ -37,6 +39,7 @@ const InstructionsPage = () => {
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Account', icon: User, path: '/account' },
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Orders', icon: FileText, path: '/orders' },
     { name: 'IB', icon: Users, path: '/ib' },
     { name: 'Copytrade', icon: Copy, path: '/copytrade' },
     { name: 'Profile', icon: UserCircle, path: '/profile' },
@@ -123,15 +126,18 @@ const InstructionsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dark-900 flex flex-col md:flex-row">
+    <div className={`min-h-screen flex flex-col md:flex-row transition-colors duration-300 ${isDarkMode ? 'bg-dark-900' : 'bg-gray-100'}`}>
       {/* Mobile Header */}
       {isMobile && (
-        <header className="fixed top-0 left-0 right-0 z-40 bg-dark-800 border-b border-gray-800 px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/mobile')} className="p-2 -ml-2 hover:bg-dark-700 rounded-lg">
-            <ArrowLeft size={22} className="text-white" />
+        <header className={`fixed top-0 left-0 right-0 z-40 px-4 py-3 flex items-center gap-4 ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200'} border-b`}>
+          <button onClick={() => navigate('/mobile')} className={`p-2 -ml-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
+            <ArrowLeft size={22} className={isDarkMode ? 'text-white' : 'text-gray-900'} />
           </button>
-          <h1 className="text-white font-semibold text-lg flex-1">Instructions</h1>
-          <button onClick={() => navigate('/mobile')} className="p-2 hover:bg-dark-700 rounded-lg">
+          <h1 className={`font-semibold text-lg flex-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Instructions</h1>
+          <button onClick={toggleDarkMode} className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
+            {isDarkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-600" />}
+          </button>
+          <button onClick={() => navigate('/mobile')} className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
             <Home size={20} className="text-gray-400" />
           </button>
         </header>
@@ -140,7 +146,7 @@ const InstructionsPage = () => {
       {/* Sidebar - Hidden on Mobile */}
       {!isMobile && (
         <aside 
-          className={`${sidebarExpanded ? 'w-48' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300`}
+          className={`${sidebarExpanded ? 'w-48' : 'w-16'} flex flex-col transition-all duration-300 ${isDarkMode ? 'bg-dark-900 border-gray-800' : 'bg-white border-gray-200'} border-r`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
@@ -155,7 +161,7 @@ const InstructionsPage = () => {
                 key={item.name}
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
-                  item.name === 'Instructions' ? 'bg-accent-green text-black' : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                  item.name === 'Instructions' ? 'bg-accent-green text-black' : isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 <item.icon size={18} className="flex-shrink-0" />
@@ -163,8 +169,12 @@ const InstructionsPage = () => {
               </button>
             ))}
           </nav>
-          <div className="p-2 border-t border-gray-800">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white rounded-lg">
+          <div className={`p-2 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <button onClick={toggleDarkMode} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 ${isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}>
+              {isDarkMode ? <Sun size={18} className="text-yellow-400" /> : <Moon size={18} className="text-gray-600" />}
+              {sidebarExpanded && <span className="text-sm">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+            </button>
+            <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
               <LogOut size={18} />
               {sidebarExpanded && <span className="text-sm">Log Out</span>}
             </button>
@@ -175,8 +185,8 @@ const InstructionsPage = () => {
       {/* Main Content */}
       <main className={`flex-1 overflow-auto ${isMobile ? 'pt-14' : ''}`}>
         {!isMobile && (
-          <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-            <h1 className="text-xl font-semibold text-white">Instructions & Guide</h1>
+          <header className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Instructions & Guide</h1>
           </header>
         )}
 
@@ -198,16 +208,16 @@ const InstructionsPage = () => {
             {/* Accordion Sections */}
             <div className={`space-y-${isMobile ? '2' : '4'}`}>
               {sections.map(section => (
-                <div key={section.id} className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
+                <div key={section.id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl border overflow-hidden`}>
                   <button
                     onClick={() => setExpandedSection(expandedSection === section.id ? '' : section.id)}
-                    className={`w-full flex items-center justify-between ${isMobile ? 'p-3' : 'p-5'} hover:bg-dark-700 transition-colors`}
+                    className={`w-full flex items-center justify-between ${isMobile ? 'p-3' : 'p-5'} transition-colors ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-50'}`}
                   >
                     <div className={`flex items-center ${isMobile ? 'gap-3' : 'gap-4'}`}>
                       <div className={`${isMobile ? 'w-8 h-8' : 'w-10 h-10'} bg-accent-green/20 rounded-lg flex items-center justify-center`}>
                         <section.icon size={isMobile ? 16 : 20} className="text-accent-green" />
                       </div>
-                      <span className={`text-white font-semibold ${isMobile ? 'text-sm' : ''}`}>{section.title}</span>
+                      <span className={`font-semibold ${isMobile ? 'text-sm' : ''} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{section.title}</span>
                     </div>
                     {expandedSection === section.id ? (
                       <ChevronDown size={isMobile ? 16 : 20} className="text-gray-400" />
@@ -217,7 +227,7 @@ const InstructionsPage = () => {
                   </button>
                   
                   {expandedSection === section.id && (
-                    <div className={`${isMobile ? 'px-3 pb-3' : 'px-5 pb-5'} border-t border-gray-700`}>
+                    <div className={`${isMobile ? 'px-3 pb-3' : 'px-5 pb-5'} border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                       <div className={`pt-3 space-y-${isMobile ? '2' : '4'}`}>
                         {section.content.map((item, idx) => (
                           <div key={idx} className="flex gap-4">
@@ -225,8 +235,8 @@ const InstructionsPage = () => {
                               <span className="text-accent-green text-xs font-bold">{idx + 1}</span>
                             </div>
                             <div>
-                              <h4 className="text-white font-medium">{item.title}</h4>
-                              <p className="text-gray-400 text-sm mt-1">{item.text}</p>
+                              <h4 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</h4>
+                              <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.text}</p>
                             </div>
                           </div>
                         ))}
@@ -238,9 +248,9 @@ const InstructionsPage = () => {
             </div>
 
             {/* Contact Support */}
-            <div className="bg-dark-800 rounded-xl p-6 border border-gray-800 mt-6">
-              <h3 className="text-white font-semibold mb-3">Need More Help?</h3>
-              <p className="text-gray-400 mb-4">
+            <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-6 border mt-6`}>
+              <h3 className={`font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Need More Help?</h3>
+              <p className={`mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 If you couldn't find what you're looking for, our support team is here to help.
               </p>
               <button

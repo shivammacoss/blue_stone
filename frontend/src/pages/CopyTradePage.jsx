@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { 
   LayoutDashboard, User, Wallet, Users, Copy, UserCircle, HelpCircle, FileText, LogOut,
   TrendingUp, Star, UserPlus, Pause, Play, X, Search, Filter, ChevronRight, Trophy, Crown, DollarSign,
-  ArrowLeft, Home
+  ArrowLeft, Home, Sun, Moon
 } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const API_URL = 'http://localhost:5001/api'
 
 const CopyTradePage = () => {
   const navigate = useNavigate()
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('discover')
   const [masters, setMasters] = useState([])
@@ -37,6 +39,13 @@ const CopyTradePage = () => {
   })
   const [applyingMaster, setApplyingMaster] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  
+  // Edit subscription states
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingSubscription, setEditingSubscription] = useState(null)
+  const [editAccount, setEditAccount] = useState('')
+  const [editCopyMode, setEditCopyMode] = useState('FIXED_LOT')
+  const [editCopyValue, setEditCopyValue] = useState('0.01')
 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -44,6 +53,7 @@ const CopyTradePage = () => {
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Account', icon: User, path: '/account' },
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Orders', icon: FileText, path: '/orders' },
     { name: 'IB', icon: Users, path: '/ib' },
     { name: 'Copytrade', icon: Copy, path: '/copytrade' },
     { name: 'Profile', icon: UserCircle, path: '/profile' },
@@ -257,6 +267,62 @@ const CopyTradePage = () => {
     }
   }
 
+  const handleEditSubscription = (sub) => {
+    setEditingSubscription(sub)
+    setEditAccount(sub.followerAccountId?._id || sub.followerAccountId || '')
+    setEditCopyMode(sub.copyMode || 'FIXED_LOT')
+    setEditCopyValue(sub.copyValue?.toString() || '0.01')
+    setShowEditModal(true)
+  }
+
+  const handleSaveSubscription = async () => {
+    if (!editingSubscription) return
+
+    try {
+      const res = await fetch(`${API_URL}/copy/follow/${editingSubscription._id}/update`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          followerAccountId: editAccount,
+          copyMode: editCopyMode,
+          copyValue: parseFloat(editCopyValue)
+        })
+      })
+      const data = await res.json()
+      if (data.success || data.follower) {
+        alert('Subscription updated successfully!')
+        setShowEditModal(false)
+        setEditingSubscription(null)
+        fetchMySubscriptions()
+      } else {
+        alert(data.message || 'Failed to update subscription')
+      }
+    } catch (error) {
+      console.error('Error updating subscription:', error)
+      alert('Failed to update subscription')
+    }
+  }
+
+  const handleUnfollow = async (subscriptionId) => {
+    if (!confirm('Are you sure you want to unfollow this master? This will stop all future copy trades.')) return
+
+    try {
+      const res = await fetch(`${API_URL}/copy/follow/${subscriptionId}/unfollow`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert('Successfully unfollowed master')
+        fetchMySubscriptions()
+      } else {
+        alert(data.message || 'Failed to unfollow')
+      }
+    } catch (error) {
+      console.error('Error unfollowing:', error)
+      alert('Failed to unfollow master')
+    }
+  }
+
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -268,15 +334,18 @@ const CopyTradePage = () => {
   )
 
   return (
-    <div className="min-h-screen bg-dark-900 flex flex-col md:flex-row">
+    <div className={`min-h-screen flex flex-col md:flex-row transition-colors duration-300 ${isDarkMode ? 'bg-dark-900' : 'bg-gray-100'}`}>
       {/* Mobile Header */}
       {isMobile && (
-        <header className="fixed top-0 left-0 right-0 z-40 bg-dark-800 border-b border-gray-800 px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/mobile')} className="p-2 -ml-2 hover:bg-dark-700 rounded-lg">
-            <ArrowLeft size={22} className="text-white" />
+        <header className={`fixed top-0 left-0 right-0 z-40 px-4 py-3 flex items-center gap-4 ${isDarkMode ? 'bg-dark-800 border-b border-gray-800' : 'bg-white border-b border-gray-200'}`}>
+          <button onClick={() => navigate('/mobile')} className={`p-2 -ml-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
+            <ArrowLeft size={22} className={isDarkMode ? 'text-white' : 'text-gray-900'} />
           </button>
-          <h1 className="text-white font-semibold text-lg flex-1">Copy Trading</h1>
-          <button onClick={() => navigate('/mobile')} className="p-2 hover:bg-dark-700 rounded-lg">
+          <h1 className={`font-semibold text-lg flex-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Copy Trading</h1>
+          <button onClick={toggleDarkMode} className={`p-2 rounded-lg ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}>
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          <button onClick={() => navigate('/mobile')} className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-dark-700' : 'hover:bg-gray-100'}`}>
             <Home size={20} className="text-gray-400" />
           </button>
         </header>
@@ -285,7 +354,7 @@ const CopyTradePage = () => {
       {/* Sidebar - Hidden on Mobile */}
       {!isMobile && (
         <aside 
-          className={`${sidebarExpanded ? 'w-48' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300`}
+          className={`${sidebarExpanded ? 'w-48' : 'w-16'} ${isDarkMode ? 'bg-dark-900 border-gray-800' : 'bg-white border-gray-200'} border-r flex flex-col transition-all duration-300`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
@@ -300,7 +369,7 @@ const CopyTradePage = () => {
                 key={item.name}
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${
-                  item.name === 'Copytrade' ? 'bg-accent-green text-black' : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                  item.name === 'Copytrade' ? 'bg-accent-green text-black' : isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 <item.icon size={18} className="flex-shrink-0" />
@@ -308,8 +377,12 @@ const CopyTradePage = () => {
               </button>
             ))}
           </nav>
-          <div className="p-2 border-t border-gray-800">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white rounded-lg">
+          <div className={`p-2 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <button onClick={toggleDarkMode} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 ${isDarkMode ? 'text-yellow-400 hover:bg-dark-700' : 'text-blue-500 hover:bg-gray-100'}`}>
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              {sidebarExpanded && <span className="text-sm">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+            </button>
+            <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
               <LogOut size={18} />
               {sidebarExpanded && <span className="text-sm">Log Out</span>}
             </button>
@@ -320,8 +393,8 @@ const CopyTradePage = () => {
       {/* Main Content */}
       <main className={`flex-1 overflow-auto ${isMobile ? 'pt-14' : ''}`}>
         {!isMobile && (
-          <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-            <h1 className="text-xl font-semibold text-white">Copy Trading</h1>
+          <header className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+            <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Copy Trading</h1>
           </header>
         )}
 
@@ -399,7 +472,7 @@ const CopyTradePage = () => {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`${isMobile ? 'px-3 py-1.5 text-xs whitespace-nowrap' : 'px-4 py-2'} rounded-lg font-medium transition-colors ${
-                  activeTab === tab ? 'bg-accent-green text-black' : 'bg-dark-800 text-gray-400 hover:text-white'
+                  activeTab === tab ? 'bg-accent-green text-black' : isDarkMode ? 'bg-dark-800 text-gray-400 hover:text-white' : 'bg-white text-gray-600 hover:text-gray-900 border border-gray-200'
                 }`}
               >
                 {tab === 'discover' ? 'Discover' : 
@@ -420,7 +493,7 @@ const CopyTradePage = () => {
                     placeholder="Search masters..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className={`w-full bg-dark-800 border border-gray-700 rounded-lg pl-9 pr-3 ${isMobile ? 'py-2 text-sm' : 'py-2'} text-white`}
+                    className={`w-full rounded-lg pl-9 pr-3 ${isMobile ? 'py-2 text-sm' : 'py-2'} ${isDarkMode ? 'bg-dark-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'} border`}
                   />
                 </div>
               </div>
@@ -438,13 +511,13 @@ const CopyTradePage = () => {
                   {filteredMasters.map(master => {
                     const isFollowing = mySubscriptions.some(sub => sub.masterId?._id === master._id || sub.masterId === master._id)
                     return (
-                      <div key={master._id} className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+                      <div key={master._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-5 border`}>
                         <div className="flex items-center gap-3 mb-4">
                           <div className="w-12 h-12 bg-accent-green/20 rounded-full flex items-center justify-center">
                             <span className="text-accent-green font-bold">{master.displayName?.charAt(0)}</span>
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-white font-semibold">{master.displayName}</h3>
+                            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.displayName}</h3>
                             <p className="text-gray-500 text-sm">{master.stats?.activeFollowers || 0} followers</p>
                           </div>
                           {isFollowing && (
@@ -454,19 +527,19 @@ const CopyTradePage = () => {
                           )}
                         </div>
                         <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div className="bg-dark-700 rounded-lg p-3">
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
                             <p className="text-gray-500 text-xs">Win Rate</p>
-                            <p className="text-white font-semibold">{master.stats?.winRate?.toFixed(1) || 0}%</p>
+                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.winRate?.toFixed(1) || 0}%</p>
                           </div>
-                          <div className="bg-dark-700 rounded-lg p-3">
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
                             <p className="text-gray-500 text-xs">Total Trades</p>
-                            <p className="text-white font-semibold">{master.stats?.totalTrades || 0}</p>
+                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.totalTrades || 0}</p>
                           </div>
-                          <div className="bg-dark-700 rounded-lg p-3">
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
                             <p className="text-gray-500 text-xs">Commission</p>
-                            <p className="text-white font-semibold">{master.approvedCommissionPercentage || 0}%</p>
+                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.approvedCommissionPercentage || 0}%</p>
                           </div>
-                          <div className="bg-dark-700 rounded-lg p-3">
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
                             <p className="text-gray-500 text-xs">Profit</p>
                             <p className="text-accent-green font-semibold">${master.stats?.totalProfitGenerated?.toFixed(2) || '0.00'}</p>
                           </div>
@@ -508,20 +581,23 @@ const CopyTradePage = () => {
               ) : (
                 <div className="space-y-4">
                   {mySubscriptions.map(sub => (
-                    <div key={sub._id} className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+                    <div key={sub._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-5 border`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-accent-green/20 rounded-full flex items-center justify-center">
                             <span className="text-accent-green font-bold">{sub.masterId?.displayName?.charAt(0)}</span>
                           </div>
                           <div>
-                            <h3 className="text-white font-semibold">{sub.masterId?.displayName}</h3>
+                            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{sub.masterId?.displayName}</h3>
                             <p className="text-gray-500 text-sm">
-                              {sub.copyMode === 'FIXED_LOT' ? `Fixed: ${sub.copyValue} lots` : `Multiplier: ${sub.copyValue}x`}
+                              {sub.copyMode === 'FIXED_LOT' && `Fixed: ${sub.copyValue} lots`}
+                              {sub.copyMode === 'BALANCE_BASED' && 'Balance Based'}
+                              {sub.copyMode === 'EQUITY_BASED' && 'Equity Based'}
+                              {sub.copyMode === 'MULTIPLIER' && `Multiplier: ${sub.copyValue}x`}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                             sub.status === 'ACTIVE' ? 'bg-green-500/20 text-green-500' : 
                             sub.status === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'
@@ -529,27 +605,36 @@ const CopyTradePage = () => {
                             {sub.status}
                           </span>
                           <button
+                            onClick={() => handleEditSubscription(sub)}
+                            className="p-2 bg-dark-700 rounded-lg hover:bg-blue-500/20"
+                            title="Edit Settings"
+                          >
+                            <Star size={16} className="text-blue-500" />
+                          </button>
+                          <button
                             onClick={() => handlePauseResume(sub._id, sub.status)}
                             className="p-2 bg-dark-700 rounded-lg hover:bg-dark-600"
+                            title={sub.status === 'ACTIVE' ? 'Pause' : 'Resume'}
                           >
                             {sub.status === 'ACTIVE' ? <Pause size={16} className="text-yellow-500" /> : <Play size={16} className="text-green-500" />}
                           </button>
                           <button
-                            onClick={() => handleStop(sub._id)}
+                            onClick={() => handleUnfollow(sub._id)}
                             className="p-2 bg-dark-700 rounded-lg hover:bg-red-500/20"
+                            title="Unfollow"
                           >
                             <X size={16} className="text-red-500" />
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 pt-4 border-t border-gray-700">
+                      <div className={`grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 pt-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         <div>
                           <p className="text-gray-500 text-xs">Total Trades</p>
-                          <p className="text-white font-semibold">{sub.stats?.totalCopiedTrades || 0}</p>
+                          <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{sub.stats?.totalCopiedTrades || 0}</p>
                         </div>
                         <div>
                           <p className="text-gray-500 text-xs">Open / Closed</p>
-                          <p className="text-white font-semibold">
+                          <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                             <span className="text-blue-400">{sub.stats?.openTrades || 0}</span>
                             {' / '}
                             <span className="text-gray-400">{sub.stats?.closedTrades || 0}</span>
@@ -586,25 +671,25 @@ const CopyTradePage = () => {
                   <p className="text-gray-500">No copy trades yet</p>
                 </div>
               ) : (
-                <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
+                <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl border overflow-hidden`}>
                   <table className="w-full">
-                    <thead className="bg-dark-700">
+                    <thead className={isDarkMode ? 'bg-dark-700' : 'bg-gray-50'}>
                       <tr>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Master</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Symbol</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Side</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Lots</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Open Price</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Close Price</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">P/L</th>
-                        <th className="text-left text-gray-400 text-xs font-medium px-4 py-3">Status</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Master</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Symbol</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Side</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Lots</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Open Price</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Close Price</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>P/L</th>
+                        <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {myCopyTrades.map(trade => (
-                        <tr key={trade._id} className="border-t border-gray-800">
-                          <td className="px-4 py-3 text-white text-sm">{trade.masterId?.displayName || '-'}</td>
-                          <td className="px-4 py-3 text-white text-sm">{trade.symbol}</td>
+                        <tr key={trade._id} className={`border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+                          <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{trade.masterId?.displayName || '-'}</td>
+                          <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{trade.symbol}</td>
                           <td className={`px-4 py-3 text-sm ${trade.side === 'BUY' ? 'text-green-500' : 'text-red-500'}`}>{trade.side}</td>
                           <td className="px-4 py-3 text-white text-sm">{trade.followerLotSize}</td>
                           <td className="px-4 py-3 text-white text-sm">{trade.followerOpenPrice?.toFixed(5)}</td>
@@ -641,17 +726,20 @@ const CopyTradePage = () => {
               ) : (
                 <div className="space-y-4">
                   {myFollowers.map(follower => (
-                    <div key={follower._id} className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+                    <div key={follower._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-5 border`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center">
                             <span className="text-blue-500 font-bold">{follower.followerId?.firstName?.charAt(0) || 'U'}</span>
                           </div>
                           <div>
-                            <h3 className="text-white font-semibold">{follower.followerId?.firstName} {follower.followerId?.lastName}</h3>
+                            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{follower.followerId?.firstName} {follower.followerId?.lastName}</h3>
                             <p className="text-gray-500 text-sm">{follower.followerId?.email}</p>
                             <p className="text-gray-600 text-xs mt-1">
-                              {follower.copyMode === 'FIXED_LOT' ? `Fixed: ${follower.copyValue} lots` : `Multiplier: ${follower.copyValue}x`}
+                              {follower.copyMode === 'FIXED_LOT' && `Fixed: ${follower.copyValue} lots`}
+                              {follower.copyMode === 'BALANCE_BASED' && 'Balance Based'}
+                              {follower.copyMode === 'EQUITY_BASED' && 'Equity Based'}
+                              {follower.copyMode === 'MULTIPLIER' && `Multiplier: ${follower.copyValue}x`}
                             </p>
                           </div>
                         </div>
@@ -716,30 +804,46 @@ const CopyTradePage = () => {
                 <label className="text-gray-400 text-sm mb-1 block">Copy Mode</label>
                 <select
                   value={copyMode}
-                  onChange={(e) => setCopyMode(e.target.value)}
+                  onChange={(e) => {
+                    setCopyMode(e.target.value)
+                    // Set appropriate default value based on mode
+                    if (e.target.value === 'FIXED_LOT') setCopyValue('0.01')
+                    else if (e.target.value === 'MULTIPLIER') setCopyValue('1')
+                    else setCopyValue('10') // Max lot size for balance/equity based
+                  }}
                   className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
                 >
                   <option value="FIXED_LOT">Fixed Lot Size</option>
-                  <option value="LOT_MULTIPLIER">Lot Multiplier</option>
+                  <option value="BALANCE_BASED">Balance Based (Proportional)</option>
+                  <option value="EQUITY_BASED">Equity Based (Proportional)</option>
+                  <option value="MULTIPLIER">Multiplier</option>
                 </select>
+                <p className="text-gray-500 text-xs mt-1">
+                  {copyMode === 'FIXED_LOT' && 'Use a fixed lot size for every copied trade'}
+                  {copyMode === 'BALANCE_BASED' && 'Lot = Master Lot × (Your Balance / Master Balance)'}
+                  {copyMode === 'EQUITY_BASED' && 'Lot = Master Lot × (Your Equity / Master Equity)'}
+                  {copyMode === 'MULTIPLIER' && 'Lot = Master Lot × Your Multiplier'}
+                </p>
               </div>
 
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">
-                  {copyMode === 'FIXED_LOT' ? 'Lot Size' : 'Multiplier'}
+                  {copyMode === 'FIXED_LOT' ? 'Lot Size' : 
+                   copyMode === 'MULTIPLIER' ? 'Multiplier Value' : 'Max Lot Size'}
                 </label>
                 <input
                   type="number"
                   value={copyValue}
                   onChange={(e) => setCopyValue(e.target.value)}
-                  step="0.01"
-                  min="0.01"
+                  min={copyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
+                  step={copyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
                   className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
                 />
                 <p className="text-gray-500 text-xs mt-1">
-                  {copyMode === 'FIXED_LOT' 
-                    ? 'Each copied trade will use this lot size' 
-                    : 'Your lot size = Master lot × this value'}
+                  {copyMode === 'FIXED_LOT' && 'Each copied trade will use this fixed lot size'}
+                  {copyMode === 'BALANCE_BASED' && 'Maximum lot size limit (e.g., Master $1000 trades 1 lot, you have $500 → you get 0.5 lot)'}
+                  {copyMode === 'EQUITY_BASED' && 'Maximum lot size limit (e.g., Master $1000 equity trades 1 lot, you have $1500 → you get 1.5 lot)'}
+                  {copyMode === 'MULTIPLIER' && 'Multiply master lot by this value (e.g., 2 = double the lot size)'}
                 </p>
               </div>
 
@@ -854,6 +958,93 @@ const CopyTradePage = () => {
                 className="flex-1 bg-yellow-500 text-black py-2 rounded-lg font-medium hover:bg-yellow-400 disabled:opacity-50"
               >
                 {applyingMaster ? 'Submitting...' : 'Submit Application'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Subscription Modal */}
+      {showEditModal && editingSubscription && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h2 className="text-xl font-semibold text-white mb-4">Edit Subscription</h2>
+            <p className="text-gray-400 text-sm mb-4">Following: {editingSubscription.masterId?.displayName}</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">Trading Account</label>
+                <select
+                  value={editAccount}
+                  onChange={(e) => setEditAccount(e.target.value)}
+                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                >
+                  {accounts.map(acc => (
+                    <option key={acc._id} value={acc._id}>{acc.accountId} - ${acc.balance?.toFixed(2)}</option>
+                  ))}
+                </select>
+                <p className="text-gray-500 text-xs mt-1">Change the account where trades will be copied</p>
+              </div>
+
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">Copy Mode</label>
+                <select
+                  value={editCopyMode}
+                  onChange={(e) => {
+                    setEditCopyMode(e.target.value)
+                    if (e.target.value === 'FIXED_LOT') setEditCopyValue('0.01')
+                    else if (e.target.value === 'MULTIPLIER') setEditCopyValue('1')
+                    else setEditCopyValue('10')
+                  }}
+                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                >
+                  <option value="FIXED_LOT">Fixed Lot Size</option>
+                  <option value="BALANCE_BASED">Balance Based (Proportional)</option>
+                  <option value="EQUITY_BASED">Equity Based (Proportional)</option>
+                  <option value="MULTIPLIER">Multiplier</option>
+                </select>
+                <p className="text-gray-500 text-xs mt-1">
+                  {editCopyMode === 'FIXED_LOT' && 'Use a fixed lot size for every copied trade'}
+                  {editCopyMode === 'BALANCE_BASED' && 'Lot = Master Lot × (Your Balance / Master Balance)'}
+                  {editCopyMode === 'EQUITY_BASED' && 'Lot = Master Lot × (Your Equity / Master Equity)'}
+                  {editCopyMode === 'MULTIPLIER' && 'Lot = Master Lot × Your Multiplier'}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-gray-400 text-sm mb-1 block">
+                  {editCopyMode === 'FIXED_LOT' ? 'Lot Size' : 
+                   editCopyMode === 'MULTIPLIER' ? 'Multiplier Value' : 'Max Lot Size'}
+                </label>
+                <input
+                  type="number"
+                  value={editCopyValue}
+                  onChange={(e) => setEditCopyValue(e.target.value)}
+                  min={editCopyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
+                  step={editCopyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
+                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+                <p className="text-gray-500 text-xs mt-1">
+                  {editCopyMode === 'FIXED_LOT' && 'Each copied trade will use this fixed lot size'}
+                  {editCopyMode === 'BALANCE_BASED' && 'Maximum lot size limit for proportional calculation'}
+                  {editCopyMode === 'EQUITY_BASED' && 'Maximum lot size limit for proportional calculation'}
+                  {editCopyMode === 'MULTIPLIER' && 'Multiply master lot by this value'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => { setShowEditModal(false); setEditingSubscription(null); }}
+                className="flex-1 bg-dark-700 text-white py-2 rounded-lg hover:bg-dark-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveSubscription}
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-medium hover:bg-blue-600"
+              >
+                Save Changes
               </button>
             </div>
           </div>

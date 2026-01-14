@@ -24,9 +24,25 @@ const accountTypeSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  minSpread: {
+    type: Number,
+    default: 0
+  },
+  commission: {
+    type: Number,
+    default: 0
+  },
   isActive: {
     type: Boolean,
     default: true
+  },
+  isDemo: {
+    type: Boolean,
+    default: false
+  },
+  demoBalance: {
+    type: Number,
+    default: 10000
   }
 }, { timestamps: true })
 

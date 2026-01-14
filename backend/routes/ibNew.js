@@ -3,6 +3,7 @@ import User from '../models/User.js'
 import IBPlan from '../models/IBPlanNew.js'
 import IBCommission from '../models/IBCommissionNew.js'
 import IBWallet from '../models/IBWallet.js'
+import IBLevel from '../models/IBLevel.js'
 import ibEngine from '../services/ibEngineNew.js'
 import mongoose from 'mongoose'
 
@@ -61,7 +62,7 @@ router.post('/register-referral', async (req, res) => {
 router.get('/my-profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params
-    const user = await User.findById(userId).populate('ibPlanId')
+    const user = await User.findById(userId).populate('ibPlanId').populate('ibLevelId')
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' })
@@ -73,6 +74,19 @@ router.get('/my-profile/:userId', async (req, res) => {
 
     const wallet = await IBWallet.getOrCreateWallet(userId)
     const stats = await ibEngine.getIBStats(userId)
+    
+    // Get level progress
+    let levelProgress = null
+    try {
+      levelProgress = await ibEngine.getIBLevelProgress(userId)
+    } catch (e) {
+      console.error('Error getting level progress:', e)
+    }
+
+    // Check for auto-upgrade
+    if (user.autoUpgradeEnabled) {
+      await ibEngine.checkAndUpgradeLevel(userId)
+    }
 
     res.json({
       success: true,
@@ -84,10 +98,14 @@ router.get('/my-profile/:userId', async (req, res) => {
         referralCode: user.referralCode,
         ibStatus: user.ibStatus,
         ibLevel: user.ibLevel,
+        ibLevelOrder: user.ibLevelOrder,
+        ibLevelId: user.ibLevelId,
+        autoUpgradeEnabled: user.autoUpgradeEnabled,
         ibPlan: user.ibPlanId
       },
       wallet,
-      stats: stats.stats
+      stats: stats.stats,
+      levelProgress
     })
   } catch (error) {
     console.error('Error fetching IB profile:', error)
@@ -211,7 +229,7 @@ router.get('/admin/all', async (req, res) => {
 router.get('/admin/pending', async (req, res) => {
   try {
     const pending = await User.find({ isIB: true, ibStatus: 'PENDING' })
-      .select('firstName email referralCode ibLevel createdAt')
+      .select('firstName lastName email referralCode ibLevel createdAt')
       .sort({ createdAt: -1 })
 
     res.json({ success: true, pending })
@@ -240,6 +258,34 @@ router.put('/admin/approve/:userId', async (req, res) => {
     })
   } catch (error) {
     console.error('Error approving IB:', error)
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// PUT /api/ib/admin/reject/:userId - Reject IB application
+router.put('/admin/reject/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { reason } = req.body
+
+    const user = await User.findById(userId)
+    if (!user) throw new Error('User not found')
+
+    user.ibStatus = 'REJECTED'
+    user.ibRejectionReason = reason
+    await user.save()
+
+    res.json({
+      success: true,
+      message: 'IB application rejected',
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        ibStatus: user.ibStatus
+      }
+    })
+  } catch (error) {
+    console.error('Error rejecting IB:', error)
     res.status(400).json({ success: false, message: error.message })
   }
 })
@@ -287,6 +333,38 @@ router.put('/admin/unblock/:userId', async (req, res) => {
     })
   } catch (error) {
     console.error('Error unblocking IB:', error)
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// PUT /api/ib/admin/update/:userId - Update IB details (level)
+router.put('/admin/update/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { ibLevel } = req.body
+
+    const user = await User.findById(userId)
+    if (!user) throw new Error('User not found')
+    if (!user.isIB) throw new Error('User is not an IB')
+
+    // Update IB level if provided
+    if (ibLevel !== undefined) {
+      user.ibLevel = parseInt(ibLevel) || 1
+    }
+
+    await user.save()
+
+    res.json({
+      success: true,
+      message: 'IB updated successfully',
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        ibLevel: user.ibLevel
+      }
+    })
+  } catch (error) {
+    console.error('Error updating IB:', error)
     res.status(400).json({ success: false, message: error.message })
   }
 })
@@ -425,7 +503,23 @@ router.get('/plans', async (req, res) => {
 router.get('/admin/plans', async (req, res) => {
   try {
     const plans = await IBPlan.find().sort({ createdAt: -1 })
-    res.json({ success: true, plans })
+    
+    // Transform plans to include levelCommissions format for frontend compatibility
+    const transformedPlans = plans.map(plan => {
+      const levelCommissions = {}
+      if (plan.levels && Array.isArray(plan.levels)) {
+        plan.levels.forEach(l => {
+          levelCommissions[`level${l.level}`] = l.rate
+        })
+      }
+      return {
+        ...plan.toObject(),
+        levelCommissions,
+        commissionSources: plan.source
+      }
+    })
+    
+    res.json({ success: true, plans: transformedPlans })
   } catch (error) {
     console.error('Error fetching plans:', error)
     res.status(500).json({ success: false, message: error.message })
@@ -533,6 +627,61 @@ router.delete('/admin/plans/:planId', async (req, res) => {
   }
 })
 
+// POST /api/ib/admin/transfer-referrals - Transfer users to a different IB
+router.post('/admin/transfer-referrals', async (req, res) => {
+  try {
+    const { userIds, targetIBId } = req.body
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'No users selected' })
+    }
+
+    if (!targetIBId) {
+      return res.status(400).json({ success: false, message: 'Target IB not specified' })
+    }
+
+    // Find the target IB user
+    const targetIB = await User.findById(targetIBId)
+    if (!targetIB) {
+      return res.status(404).json({ success: false, message: 'Target IB not found' })
+    }
+
+    // Verify target is an active IB
+    if (!targetIB.isIB || targetIB.ibStatus !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Target user is not an active IB' })
+    }
+
+    let transferredCount = 0
+
+    // Update each user's parentIBId to point to new IB
+    for (const userId of userIds) {
+      try {
+        const result = await User.findByIdAndUpdate(userId, { 
+          parentIBId: targetIBId,
+          referredBy: targetIB.referralCode
+        }, { new: true })
+        if (result) {
+          transferredCount++
+          console.log(`Transferred user ${userId} to IB ${targetIBId}`)
+        }
+      } catch (err) {
+        console.error(`Error transferring user ${userId}:`, err)
+      }
+    }
+
+    console.log(`[Admin] Transferred ${transferredCount} users to IB ${targetIB.email}`)
+
+    res.json({ 
+      success: true, 
+      message: `Successfully transferred ${transferredCount} users`,
+      transferredCount
+    })
+  } catch (error) {
+    console.error('Error transferring referrals:', error)
+    res.status(500).json({ success: false, message: 'Error transferring referrals', error: error.message })
+  }
+})
+
 // GET /api/ib/admin/dashboard - Admin dashboard stats
 router.get('/admin/dashboard', async (req, res) => {
   try {
@@ -577,6 +726,207 @@ router.get('/admin/dashboard', async (req, res) => {
     })
   } catch (error) {
     console.error('Error fetching dashboard:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
+// ==================== IB LEVEL ROUTES ====================
+
+// GET /api/ib/levels - Get all IB levels (public)
+router.get('/levels', async (req, res) => {
+  try {
+    let levels = await IBLevel.getAllLevels()
+    if (levels.length === 0) {
+      await IBLevel.initializeDefaultLevels()
+      levels = await IBLevel.getAllLevels()
+    }
+    res.json({ success: true, levels })
+  } catch (error) {
+    console.error('Error fetching levels:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
+// GET /api/ib/admin/levels - Get all IB levels (admin)
+router.get('/admin/levels', async (req, res) => {
+  try {
+    let levels = await IBLevel.find().sort({ order: 1 })
+    if (levels.length === 0) {
+      await IBLevel.initializeDefaultLevels()
+      levels = await IBLevel.find().sort({ order: 1 })
+    }
+    res.json({ success: true, levels })
+  } catch (error) {
+    console.error('Error fetching levels:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
+// POST /api/ib/admin/levels - Create new IB level
+router.post('/admin/levels', async (req, res) => {
+  try {
+    const { name, order, referralTarget, commissionRate, commissionType, downlineCommission, color, icon } = req.body
+
+    if (!name || order === undefined) {
+      return res.status(400).json({ success: false, message: 'Name and order are required' })
+    }
+
+    // Check if order already exists
+    const existingOrder = await IBLevel.findOne({ order })
+    if (existingOrder) {
+      return res.status(400).json({ success: false, message: 'A level with this order already exists' })
+    }
+
+    const level = await IBLevel.create({
+      name,
+      order,
+      referralTarget: referralTarget || 0,
+      commissionRate: commissionRate || 0,
+      commissionType: commissionType || 'PER_LOT',
+      downlineCommission: downlineCommission || { level1: 0, level2: 0, level3: 0, level4: 0, level5: 0 },
+      color: color || '#10B981',
+      icon: icon || 'award'
+    })
+
+    res.json({ success: true, message: 'Level created successfully', level })
+  } catch (error) {
+    console.error('Error creating level:', error)
+    if (error.code === 11000) {
+      return res.status(400).json({ success: false, message: 'A level with this name already exists' })
+    }
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// PUT /api/ib/admin/levels/:levelId - Update IB level
+router.put('/admin/levels/:levelId', async (req, res) => {
+  try {
+    const { levelId } = req.params
+    const { name, order, referralTarget, commissionRate, commissionType, downlineCommission, color, icon, isActive } = req.body
+
+    const level = await IBLevel.findById(levelId)
+    if (!level) {
+      return res.status(404).json({ success: false, message: 'Level not found' })
+    }
+
+    // Check if new order conflicts with existing level
+    if (order !== undefined && order !== level.order) {
+      const existingOrder = await IBLevel.findOne({ order, _id: { $ne: levelId } })
+      if (existingOrder) {
+        return res.status(400).json({ success: false, message: 'A level with this order already exists' })
+      }
+    }
+
+    if (name !== undefined) level.name = name
+    if (order !== undefined) level.order = order
+    if (referralTarget !== undefined) level.referralTarget = referralTarget
+    if (commissionRate !== undefined) level.commissionRate = commissionRate
+    if (commissionType !== undefined) level.commissionType = commissionType
+    if (downlineCommission !== undefined) level.downlineCommission = downlineCommission
+    if (color !== undefined) level.color = color
+    if (icon !== undefined) level.icon = icon
+    if (isActive !== undefined) level.isActive = isActive
+
+    await level.save()
+
+    res.json({ success: true, message: 'Level updated successfully', level })
+  } catch (error) {
+    console.error('Error updating level:', error)
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// DELETE /api/ib/admin/levels/:levelId - Delete IB level
+router.delete('/admin/levels/:levelId', async (req, res) => {
+  try {
+    const { levelId } = req.params
+
+    // Check if any IBs are using this level
+    const ibsUsingLevel = await User.countDocuments({ ibLevelId: levelId })
+    if (ibsUsingLevel > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot delete level. ${ibsUsingLevel} IBs are at this level.` 
+      })
+    }
+
+    await IBLevel.findByIdAndDelete(levelId)
+    res.json({ success: true, message: 'Level deleted successfully' })
+  } catch (error) {
+    console.error('Error deleting level:', error)
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// PUT /api/ib/admin/user-level/:userId - Manually change user's IB level
+router.put('/admin/user-level/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { levelId } = req.body
+
+    const user = await User.findById(userId)
+    if (!user || !user.isIB) {
+      return res.status(404).json({ success: false, message: 'IB not found' })
+    }
+
+    const level = await IBLevel.findById(levelId)
+    if (!level) {
+      return res.status(404).json({ success: false, message: 'Level not found' })
+    }
+
+    user.ibLevelId = level._id
+    user.ibLevelOrder = level.order
+    await user.save()
+
+    res.json({ 
+      success: true, 
+      message: `User level changed to ${level.name}`,
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        ibLevelId: user.ibLevelId,
+        ibLevelOrder: user.ibLevelOrder
+      }
+    })
+  } catch (error) {
+    console.error('Error changing user level:', error)
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// PUT /api/ib/toggle-auto-upgrade/:userId - Toggle auto-upgrade for user
+router.put('/toggle-auto-upgrade/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { enabled } = req.body
+
+    const user = await User.findById(userId)
+    if (!user || !user.isIB) {
+      return res.status(404).json({ success: false, message: 'IB not found' })
+    }
+
+    user.autoUpgradeEnabled = enabled !== undefined ? enabled : !user.autoUpgradeEnabled
+    await user.save()
+
+    res.json({ 
+      success: true, 
+      message: `Auto-upgrade ${user.autoUpgradeEnabled ? 'enabled' : 'disabled'}`,
+      autoUpgradeEnabled: user.autoUpgradeEnabled
+    })
+  } catch (error) {
+    console.error('Error toggling auto-upgrade:', error)
+    res.status(400).json({ success: false, message: error.message })
+  }
+})
+
+// POST /api/ib/admin/init-levels - Initialize default levels
+router.post('/admin/init-levels', async (req, res) => {
+  try {
+    await IBLevel.initializeDefaultLevels()
+    const levels = await IBLevel.getAllLevels()
+    res.json({ success: true, message: 'Default levels initialized', levels })
+  } catch (error) {
+    console.error('Error initializing levels:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 })

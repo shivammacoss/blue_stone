@@ -25,7 +25,11 @@ const AdminAccountTypes = () => {
     minDeposit: '',
     leverage: '1:100',
     exposureLimit: '',
-    isActive: true
+    minSpread: '0',
+    commission: '0',
+    isActive: true,
+    isDemo: false,
+    demoBalance: '10000'
   })
 
   useEffect(() => {
@@ -61,7 +65,11 @@ const AdminAccountTypes = () => {
         body: JSON.stringify({
           ...formData,
           minDeposit: parseFloat(formData.minDeposit),
-          exposureLimit: formData.exposureLimit ? parseFloat(formData.exposureLimit) : 0
+          exposureLimit: formData.exposureLimit ? parseFloat(formData.exposureLimit) : 0,
+          minSpread: parseFloat(formData.minSpread) || 0,
+          commission: parseFloat(formData.commission) || 0,
+          isDemo: formData.isDemo,
+          demoBalance: formData.isDemo ? parseFloat(formData.demoBalance) : 0
         })
       })
       const data = await res.json()
@@ -121,7 +129,11 @@ const AdminAccountTypes = () => {
       minDeposit: '',
       leverage: '1:100',
       exposureLimit: '',
-      isActive: true
+      minSpread: '0',
+      commission: '0',
+      isActive: true,
+      isDemo: false,
+      demoBalance: '10000'
     })
     setEditingType(null)
     setError('')
@@ -135,7 +147,11 @@ const AdminAccountTypes = () => {
       minDeposit: type.minDeposit.toString(),
       leverage: type.leverage,
       exposureLimit: type.exposureLimit?.toString() || '',
-      isActive: type.isActive
+      minSpread: type.minSpread?.toString() || '0',
+      commission: type.commission?.toString() || '0',
+      isActive: type.isActive,
+      isDemo: type.isDemo || false,
+      demoBalance: type.demoBalance?.toString() || '10000'
     })
     setShowModal(true)
     setError('')
@@ -167,48 +183,67 @@ const AdminAccountTypes = () => {
               <RefreshCw size={24} className="text-gray-500 animate-spin" />
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {accountTypes.map((type) => (
-                <div key={type._id} className={`bg-dark-800 rounded-xl p-5 border ${type.isActive ? 'border-gray-800' : 'border-red-500/30 opacity-60'}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white font-semibold">{type.name}</h3>
-                    <span className={`px-2 py-1 rounded text-xs ${type.isActive ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                <div key={type._id} className={`bg-dark-800 rounded-lg p-4 border ${type.isActive ? 'border-gray-700' : 'border-red-500/30 opacity-60'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-white font-medium text-sm">{type.name}</h3>
+                      {type.isDemo && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-500/20 text-yellow-500">DEMO</span>
+                      )}
+                    </div>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${type.isActive ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
                       {type.isActive ? 'Active' : 'Disabled'}
                     </span>
                   </div>
-                  <p className="text-gray-500 text-sm mb-4">{type.description || 'No description'}</p>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex justify-between text-sm">
+                  <p className="text-gray-500 text-xs mb-3 line-clamp-1">{type.description || 'No description'}</p>
+                  <div className="space-y-1.5 mb-3 text-xs">
+                    <div className="flex justify-between">
                       <span className="text-gray-500">Min Deposit</span>
                       <span className="text-white">${type.minDeposit}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between">
                       <span className="text-gray-500">Leverage</span>
                       <span className="text-white">{type.leverage}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Exposure Limit</span>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Exposure</span>
                       <span className="text-white">${type.exposureLimit || 0}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Min Spread</span>
+                      <span className="text-white">{type.minSpread || 0} pips</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Commission</span>
+                      <span className="text-white">{type.commission > 0 ? `$${type.commission}` : 'NO COMM'}</span>
+                    </div>
+                    {type.isDemo && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Demo Bal</span>
+                        <span className="text-yellow-500">${type.demoBalance || 10000}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1.5">
                     <button
                       onClick={() => openEditModal(type)}
-                      className="flex-1 flex items-center justify-center gap-1 bg-dark-700 text-white py-2 rounded-lg hover:bg-dark-600 transition-colors text-sm"
+                      className="flex-1 flex items-center justify-center gap-1 bg-dark-700 text-white py-1.5 rounded text-xs hover:bg-dark-600 transition-colors"
                     >
-                      <Edit size={14} /> Edit
+                      <Edit size={12} /> Edit
                     </button>
                     <button
                       onClick={() => handleToggleActive(type)}
-                      className={`flex-1 py-2 rounded-lg transition-colors text-sm ${type.isActive ? 'bg-orange-500/20 text-orange-500 hover:bg-orange-500/30' : 'bg-green-500/20 text-green-500 hover:bg-green-500/30'}`}
+                      className={`flex-1 py-1.5 rounded transition-colors text-xs ${type.isActive ? 'bg-orange-500/20 text-orange-500 hover:bg-orange-500/30' : 'bg-green-500/20 text-green-500 hover:bg-green-500/30'}`}
                     >
                       {type.isActive ? 'Disable' : 'Enable'}
                     </button>
                     <button
                       onClick={() => handleDelete(type._id)}
-                      className="p-2 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500/30 transition-colors"
+                      className="px-2 py-1.5 bg-red-500/20 text-red-500 rounded hover:bg-red-500/30 transition-colors"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 </div>
@@ -272,17 +307,18 @@ const AdminAccountTypes = () => {
                 </div>
                 <div>
                   <label className="block text-gray-400 text-sm mb-2">Leverage *</label>
-                  <select
-                    value={formData.leverage}
-                    onChange={(e) => setFormData({ ...formData, leverage: e.target.value })}
-                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500"
-                  >
-                    <option value="1:50">1:50</option>
-                    <option value="1:100">1:100</option>
-                    <option value="1:200">1:200</option>
-                    <option value="1:500">1:500</option>
-                    <option value="1:1000">1:1000</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white">1:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={formData.leverage.replace('1:', '')}
+                      onChange={(e) => setFormData({ ...formData, leverage: `1:${e.target.value}` })}
+                      placeholder="100"
+                      className="flex-1 bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+                  <p className="text-gray-500 text-xs mt-1">Enter any leverage value (e.g., 100, 500, 1000, 2000)</p>
                 </div>
               </div>
 
@@ -295,6 +331,63 @@ const AdminAccountTypes = () => {
                   placeholder="0 for unlimited"
                   className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
                 />
+              </div>
+
+              {/* Min Spread and Commission */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Min Spread (pips)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.minSpread}
+                    onChange={(e) => setFormData({ ...formData, minSpread: e.target.value })}
+                    placeholder="0"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Commission ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.commission}
+                    onChange={(e) => setFormData({ ...formData, commission: e.target.value })}
+                    placeholder="0"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  />
+                </div>
+              </div>
+
+              {/* Demo Account Toggle */}
+              <div className="bg-dark-700 rounded-lg p-4 border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-white font-medium">Demo Account</label>
+                    <p className="text-gray-500 text-xs mt-1">Enable this for practice/demo accounts with virtual funds</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, isDemo: !formData.isDemo })}
+                    className={`w-12 h-6 rounded-full transition-colors ${formData.isDemo ? 'bg-yellow-500' : 'bg-gray-600'}`}
+                  >
+                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${formData.isDemo ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                
+                {formData.isDemo && (
+                  <div className="mt-4 pt-4 border-t border-gray-600">
+                    <label className="block text-gray-400 text-sm mb-2">Demo Balance ($)</label>
+                    <input
+                      type="number"
+                      value={formData.demoBalance}
+                      onChange={(e) => setFormData({ ...formData, demoBalance: e.target.value })}
+                      placeholder="10000"
+                      className="w-full bg-dark-600 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500"
+                    />
+                    <p className="text-gray-500 text-xs mt-1">Virtual balance users will receive when opening this account type</p>
+                  </div>
+                )}
               </div>
             </div>
 

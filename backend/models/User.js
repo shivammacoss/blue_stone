@@ -76,6 +76,19 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  ibLevelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'IBLevel',
+    default: null
+  },
+  ibLevelOrder: {
+    type: Number,
+    default: 1
+  },
+  autoUpgradeEnabled: {
+    type: Boolean,
+    default: true
+  },
   referredBy: {
     type: String,
     default: null

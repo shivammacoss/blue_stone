@@ -95,46 +95,122 @@ const chargesSchema = new mongoose.Schema({
 chargesSchema.index({ level: 1, userId: 1, instrumentSymbol: 1, segment: 1, accountTypeId: 1 })
 
 // Static method to get applicable charges for a trade
+// Priority: USER > INSTRUMENT > ACCOUNT_TYPE > SEGMENT > GLOBAL
+// Merges charges from multiple levels - most specific wins for each field
 chargesSchema.statics.getChargesForTrade = async function(userId, symbol, segment, accountTypeId) {
-  // Priority: USER > INSTRUMENT > SEGMENT > ACCOUNT_TYPE > GLOBAL
-  const levels = ['USER', 'INSTRUMENT', 'SEGMENT', 'ACCOUNT_TYPE', 'GLOBAL']
+  console.log(`Getting charges for: userId=${userId}, symbol=${symbol}, segment=${segment}, accountTypeId=${accountTypeId}`)
   
-  for (const level of levels) {
-    let query = { level, isActive: true }
-    
-    switch (level) {
-      case 'USER':
-        query.userId = userId
-        query.instrumentSymbol = symbol
-        break
-      case 'INSTRUMENT':
-        query.instrumentSymbol = symbol
-        break
-      case 'SEGMENT':
-        query.segment = segment
-        break
-      case 'ACCOUNT_TYPE':
-        query.accountTypeId = accountTypeId
-        break
-      case 'GLOBAL':
-        // No additional filters for global
-        break
+  // Build query to find all potentially applicable charges
+  const allCharges = await this.find({ isActive: true }).sort({ createdAt: -1 })
+  
+  // Filter charges that apply to this trade
+  let applicableCharges = allCharges.filter(charge => {
+    // USER level - must match userId
+    if (charge.level === 'USER') {
+      if (!charge.userId || charge.userId.toString() !== userId?.toString()) return false
+      // If instrument is specified, must match
+      if (charge.instrumentSymbol && charge.instrumentSymbol !== symbol) return false
+      return true
     }
     
-    const charges = await this.findOne(query)
-    if (charges) return charges
+    // INSTRUMENT level - must match symbol
+    if (charge.level === 'INSTRUMENT') {
+      if (charge.instrumentSymbol !== symbol) return false
+      // If accountTypeId is specified, must match
+      if (charge.accountTypeId && charge.accountTypeId.toString() !== accountTypeId?.toString()) return false
+      return true
+    }
+    
+    // ACCOUNT_TYPE level - must match accountTypeId
+    if (charge.level === 'ACCOUNT_TYPE') {
+      if (!charge.accountTypeId || charge.accountTypeId.toString() !== accountTypeId?.toString()) return false
+      // If segment is specified, must match
+      if (charge.segment && charge.segment !== segment) return false
+      return true
+    }
+    
+    // SEGMENT level - must match segment
+    if (charge.level === 'SEGMENT') {
+      if (charge.segment !== segment) return false
+      return true
+    }
+    
+    // GLOBAL level - always applies
+    if (charge.level === 'GLOBAL') {
+      return true
+    }
+    
+    return false
+  })
+  
+  // Deduplicate charges at the same level - prefer ones with non-zero values
+  const chargesByLevel = {}
+  for (const charge of applicableCharges) {
+    const key = `${charge.level}-${charge.segment || ''}-${charge.instrumentSymbol || ''}-${charge.accountTypeId || ''}`
+    const existing = chargesByLevel[key]
+    
+    if (!existing) {
+      chargesByLevel[key] = charge
+    } else {
+      // Prefer charge with non-zero commission or spread
+      const existingScore = (existing.commissionValue || 0) + (existing.spreadValue || 0) + Math.abs(existing.swapLong || 0) + Math.abs(existing.swapShort || 0)
+      const newScore = (charge.commissionValue || 0) + (charge.spreadValue || 0) + Math.abs(charge.swapLong || 0) + Math.abs(charge.swapShort || 0)
+      
+      if (newScore > existingScore) {
+        chargesByLevel[key] = charge
+      }
+    }
   }
   
-  // Return default charges if none found
-  return {
+  applicableCharges = Object.values(chargesByLevel)
+  console.log(`Found ${applicableCharges.length} applicable charges after deduplication`)
+  
+  // Priority order for merging
+  const priorityOrder = { 'USER': 1, 'INSTRUMENT': 2, 'ACCOUNT_TYPE': 3, 'SEGMENT': 4, 'GLOBAL': 5 }
+  
+  // Sort by priority (most specific first)
+  applicableCharges.sort((a, b) => priorityOrder[a.level] - priorityOrder[b.level])
+  
+  // Merge charges - most specific wins for each field
+  const result = {
     spreadType: 'FIXED',
     spreadValue: 0,
     commissionType: 'PER_LOT',
     commissionValue: 0,
+    commissionOnBuy: true,
+    commissionOnSell: true,
+    commissionOnClose: false,
     swapLong: 0,
     swapShort: 0,
     swapType: 'POINTS'
   }
+  
+  // Apply charges from least specific to most specific (so most specific overwrites)
+  for (let i = applicableCharges.length - 1; i >= 0; i--) {
+    const charge = applicableCharges[i]
+    
+    // Only overwrite if the charge has a non-zero/non-default value
+    if (charge.spreadValue > 0) {
+      result.spreadValue = charge.spreadValue
+      result.spreadType = charge.spreadType
+    }
+    if (charge.commissionValue > 0) {
+      result.commissionValue = charge.commissionValue
+      result.commissionType = charge.commissionType
+      result.commissionOnBuy = charge.commissionOnBuy
+      result.commissionOnSell = charge.commissionOnSell
+      result.commissionOnClose = charge.commissionOnClose
+    }
+    if (charge.swapLong !== 0 || charge.swapShort !== 0) {
+      result.swapLong = charge.swapLong
+      result.swapShort = charge.swapShort
+      result.swapType = charge.swapType
+    }
+  }
+  
+  console.log(`Final charges: spread=${result.spreadValue}, commission=${result.commissionValue}, swapLong=${result.swapLong}, swapShort=${result.swapShort}`)
+  
+  return result
 }
 
 export default mongoose.model('Charges', chargesSchema)

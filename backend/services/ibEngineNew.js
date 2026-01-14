@@ -2,6 +2,7 @@ import User from '../models/User.js'
 import IBPlan from '../models/IBPlanNew.js'
 import IBCommission from '../models/IBCommissionNew.js'
 import IBWallet from '../models/IBWallet.js'
+import IBLevel from '../models/IBLevel.js'
 
 class IBEngine {
   constructor() {
@@ -393,6 +394,27 @@ class IBEngine {
       { $count: 'count' }
     ])
 
+    // Get commission counts per level
+    const levelCommissions = await IBCommission.aggregate([
+      { $match: { ibUserId: user._id, status: 'CREDITED' } },
+      {
+        $group: {
+          _id: '$level',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$commissionAmount' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ])
+
+    // Build level counts object
+    const levelCounts = {}
+    for (let i = 1; i <= 5; i++) {
+      const levelData = levelCommissions.find(l => l._id === i)
+      levelCounts[`level${i}Count`] = levelData?.count || 0
+      levelCounts[`level${i}Commission`] = levelData?.totalAmount || 0
+    }
+
     return {
       ibUser: {
         _id: user._id,
@@ -413,7 +435,8 @@ class IBEngine {
         totalDownline,
         totalCommission: commissionStats[0]?.totalCommission || 0,
         totalTrades: commissionStats[0]?.totalTrades || 0,
-        activeTraders: activeTraders[0]?.count || 0
+        activeTraders: activeTraders[0]?.count || 0,
+        ...levelCounts
       }
     }
   }
@@ -444,6 +467,146 @@ class IBEngine {
       mainWalletBalance: user.walletBalance,
       withdrawnAmount: amount
     }
+  }
+
+  // Check and auto-upgrade IB level based on referral count
+  async checkAndUpgradeLevel(ibUserId) {
+    const user = await User.findById(ibUserId).populate('ibLevelId')
+    if (!user || !user.isIB || user.ibStatus !== 'ACTIVE') return null
+    if (!user.autoUpgradeEnabled) return null
+
+    // Get direct referral count
+    const referralCount = await User.countDocuments({ parentIBId: ibUserId })
+    
+    // Get all levels sorted by order
+    const levels = await IBLevel.getAllLevels()
+    if (levels.length === 0) return null
+
+    // Find the highest level the user qualifies for
+    let qualifiedLevel = levels[0] // Start with lowest level
+    for (const level of levels) {
+      if (referralCount >= level.referralTarget) {
+        qualifiedLevel = level
+      }
+    }
+
+    // Check if upgrade is needed
+    const currentLevelOrder = user.ibLevelOrder || 1
+    if (qualifiedLevel.order > currentLevelOrder) {
+      user.ibLevelId = qualifiedLevel._id
+      user.ibLevelOrder = qualifiedLevel.order
+      await user.save()
+      
+      console.log(`[IB Level] User ${user.firstName} upgraded to ${qualifiedLevel.name} (${referralCount} referrals)`)
+      return {
+        upgraded: true,
+        previousLevel: currentLevelOrder,
+        newLevel: qualifiedLevel,
+        referralCount
+      }
+    }
+
+    return { upgraded: false, currentLevel: qualifiedLevel, referralCount }
+  }
+
+  // Get IB level progress for user dashboard
+  async getIBLevelProgress(ibUserId) {
+    const user = await User.findById(ibUserId).populate('ibLevelId')
+    if (!user || !user.isIB) throw new Error('IB not found')
+
+    // Get direct referral count
+    const referralCount = await User.countDocuments({ parentIBId: ibUserId })
+    
+    // Get all levels
+    const levels = await IBLevel.getAllLevels()
+    if (levels.length === 0) {
+      // Initialize default levels if none exist
+      await IBLevel.initializeDefaultLevels()
+      const newLevels = await IBLevel.getAllLevels()
+      return this._calculateLevelProgress(user, referralCount, newLevels)
+    }
+
+    return this._calculateLevelProgress(user, referralCount, levels)
+  }
+
+  _calculateLevelProgress(user, referralCount, levels) {
+    // Find current level
+    let currentLevel = levels.find(l => l.order === (user.ibLevelOrder || 1)) || levels[0]
+    
+    // Find next level
+    const nextLevel = levels.find(l => l.order === currentLevel.order + 1)
+    
+    // Calculate progress
+    let progressPercent = 100
+    let referralsNeeded = 0
+    
+    if (nextLevel) {
+      const currentTarget = currentLevel.referralTarget
+      const nextTarget = nextLevel.referralTarget
+      const range = nextTarget - currentTarget
+      const progress = referralCount - currentTarget
+      progressPercent = Math.min(100, Math.max(0, (progress / range) * 100))
+      referralsNeeded = Math.max(0, nextTarget - referralCount)
+    }
+
+    return {
+      currentLevel: {
+        _id: currentLevel._id,
+        name: currentLevel.name,
+        order: currentLevel.order,
+        commissionRate: currentLevel.commissionRate,
+        commissionType: currentLevel.commissionType,
+        color: currentLevel.color,
+        icon: currentLevel.icon,
+        referralTarget: currentLevel.referralTarget,
+        downlineCommission: currentLevel.downlineCommission
+      },
+      nextLevel: nextLevel ? {
+        _id: nextLevel._id,
+        name: nextLevel.name,
+        order: nextLevel.order,
+        commissionRate: nextLevel.commissionRate,
+        referralTarget: nextLevel.referralTarget,
+        color: nextLevel.color
+      } : null,
+      referralCount,
+      referralsNeeded,
+      progressPercent: Math.round(progressPercent),
+      autoUpgradeEnabled: user.autoUpgradeEnabled,
+      allLevels: levels.map(l => ({
+        _id: l._id,
+        name: l.name,
+        order: l.order,
+        commissionRate: l.commissionRate,
+        commissionType: l.commissionType,
+        referralTarget: l.referralTarget,
+        color: l.color,
+        icon: l.icon,
+        isCurrentLevel: l.order === currentLevel.order,
+        isUnlocked: referralCount >= l.referralTarget
+      }))
+    }
+  }
+
+  // Assign initial level to new IB
+  async assignInitialLevel(userId) {
+    const user = await User.findById(userId)
+    if (!user) throw new Error('User not found')
+
+    // Get the first level (Standard)
+    let firstLevel = await IBLevel.findOne({ order: 1, isActive: true })
+    if (!firstLevel) {
+      await IBLevel.initializeDefaultLevels()
+      firstLevel = await IBLevel.findOne({ order: 1, isActive: true })
+    }
+
+    if (firstLevel) {
+      user.ibLevelId = firstLevel._id
+      user.ibLevelOrder = firstLevel.order
+      await user.save()
+    }
+
+    return user
   }
 }
 

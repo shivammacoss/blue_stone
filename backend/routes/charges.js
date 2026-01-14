@@ -3,6 +3,75 @@ import Charges from '../models/Charges.js'
 
 const router = express.Router()
 
+// GET /api/charges/spreads - Get spreads for all instruments (for display in trading UI)
+router.get('/spreads', async (req, res) => {
+  try {
+    const { userId, accountTypeId } = req.query
+    
+    // Get all charges that have spread values
+    const charges = await Charges.find({ isActive: true, spreadValue: { $gt: 0 } })
+      .sort({ level: 1 })
+    
+    // Build a map of symbol -> spread (respecting hierarchy)
+    const spreadMap = {}
+    
+    // Priority order: USER > INSTRUMENT > ACCOUNT_TYPE > SEGMENT > GLOBAL
+    const priorityOrder = { 'USER': 1, 'INSTRUMENT': 2, 'ACCOUNT_TYPE': 3, 'SEGMENT': 4, 'GLOBAL': 5 }
+    
+    for (const charge of charges) {
+      // For instrument-specific charges
+      if (charge.instrumentSymbol) {
+        const existing = spreadMap[charge.instrumentSymbol]
+        if (!existing || priorityOrder[charge.level] < priorityOrder[existing.level]) {
+          spreadMap[charge.instrumentSymbol] = {
+            spread: charge.spreadValue,
+            spreadType: charge.spreadType,
+            level: charge.level
+          }
+        }
+      }
+      // For segment-level charges, apply to all instruments in that segment
+      else if (charge.segment) {
+        const segmentSymbols = {
+          'Forex': ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY'],
+          'Metals': ['XAUUSD', 'XAGUSD'],
+          'Crypto': ['BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD', 'BNBUSD', 'SOLUSD', 'ADAUSD', 'DOGEUSD', 'DOTUSD', 'MATICUSD', 'AVAXUSD', 'LINKUSD'],
+          'Indices': ['US30', 'US500', 'NAS100']
+        }
+        const symbols = segmentSymbols[charge.segment] || []
+        for (const symbol of symbols) {
+          const existing = spreadMap[symbol]
+          if (!existing || priorityOrder[charge.level] < priorityOrder[existing.level]) {
+            spreadMap[symbol] = {
+              spread: charge.spreadValue,
+              spreadType: charge.spreadType,
+              level: charge.level
+            }
+          }
+        }
+      }
+      // For global charges, apply to all instruments that don't have specific settings
+      else if (charge.level === 'GLOBAL') {
+        const allSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'XAUUSD', 'XAGUSD', 'BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD']
+        for (const symbol of allSymbols) {
+          if (!spreadMap[symbol]) {
+            spreadMap[symbol] = {
+              spread: charge.spreadValue,
+              spreadType: charge.spreadType,
+              level: charge.level
+            }
+          }
+        }
+      }
+    }
+    
+    res.json({ success: true, spreads: spreadMap })
+  } catch (error) {
+    console.error('Error fetching spreads:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
 // GET /api/charges - Get all charges with optional filters
 router.get('/', async (req, res) => {
   try {

@@ -181,32 +181,44 @@ const AdminTradeManagement = () => {
     }
   }
 
-  const fetchMarketPrice = async (symbol) => {
+  const fetchMarketPrice = async (symbol, side = null) => {
     setLoadingPrices(true)
     try {
-      let priceData = null
+      // Use backend API directly for all symbols - more reliable
+      const response = await fetch(`${API_URL}/prices/${symbol}`)
+      const data = await response.json()
       
-      // Check if it's a crypto symbol
-      const cryptoSymbols = ['BTCUSD', 'ETHUSD', 'BTCUSDT', 'ETHUSDT']
-      if (cryptoSymbols.includes(symbol)) {
-        // Use Binance API for crypto
-        const prices = await binanceApiService.getAllPrices([symbol])
-        priceData = prices[symbol]
-      } else {
-        // Use MetaAPI for forex/commodities
-        priceData = await metaApiService.getSymbolPrice(symbol)
-      }
-      
-      if (priceData && priceData.bid && priceData.ask) {
+      if (data.success && data.price && data.price.bid && data.price.ask) {
+        const priceData = data.price
         setMarketPrices(prev => ({ ...prev, [symbol]: priceData }))
         
         // Auto-set price for market orders
+        const currentSide = side || createForm.side
         if (createForm.orderType === 'MARKET') {
-          const marketPrice = createForm.side === 'BUY' ? priceData.ask : priceData.bid
+          const marketPrice = currentSide === 'BUY' ? priceData.ask : priceData.bid
           setCreateForm(prev => ({ ...prev, openPrice: marketPrice }))
         }
+        
+        console.log(`Fetched ${symbol} price: Bid=${priceData.bid}, Ask=${priceData.ask}`)
       } else {
-        console.warn('No price data received for', symbol)
+        console.warn('No price data received for', symbol, data)
+        // Try batch endpoint as fallback
+        const batchRes = await fetch(`${API_URL}/prices/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols: [symbol] })
+        })
+        const batchData = await batchRes.json()
+        if (batchData.success && batchData.prices && batchData.prices[symbol]) {
+          const priceData = batchData.prices[symbol]
+          setMarketPrices(prev => ({ ...prev, [symbol]: priceData }))
+          
+          const currentSide = side || createForm.side
+          if (createForm.orderType === 'MARKET') {
+            const marketPrice = currentSide === 'BUY' ? priceData.ask : priceData.bid
+            setCreateForm(prev => ({ ...prev, openPrice: marketPrice }))
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching price:', error)
@@ -276,14 +288,29 @@ const AdminTradeManagement = () => {
   const handleCloseTrade = async () => {
     if (!selectedTrade) return
     try {
+      // Get current market price for the symbol
+      const priceData = livePrices[selectedTrade.symbol]
+      let marketPrice = null
+      if (priceData) {
+        // Use bid for BUY trades (selling), ask for SELL trades (buying back)
+        marketPrice = selectedTrade.side === 'BUY' ? priceData.bid : priceData.ask
+      }
+
       const res = await fetch(`${API_URL}/admin/trade/close/${selectedTrade._id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ closePrice: closeFormPrice || selectedTrade.openPrice })
+        body: JSON.stringify({ 
+          closePrice: closeFormPrice || null,
+          marketPrice: marketPrice 
+        })
       })
       const data = await res.json()
       if (data.success) {
-        alert(`Trade closed by Admin! P&L: $${data.realizedPnl?.toFixed(2)}`)
+        let message = `Trade closed by Admin! P&L: $${data.realizedPnl?.toFixed(2)}`
+        if (data.followersClosed > 0) {
+          message += ` | ${data.followersClosed} follower trades also closed`
+        }
+        alert(message)
         setShowCloseModal(false)
         setCloseFormPrice(0)
         fetchTrades()
