@@ -25,17 +25,20 @@ const darkColors = {
   borderLight: '#4B5563',
 }
 
-// Light mode colors
+// Light mode colors - Multi-shade design for better UI/UX
 const lightColors = {
-  bgPrimary: '#F9FAFB',
-  bgSecondary: '#FFFFFF',
-  bgCard: '#FFFFFF',
-  bgHover: '#F3F4F6',
-  textPrimary: '#111827',
-  textSecondary: '#4B5563',
-  textMuted: '#9CA3AF',
-  border: '#E5E7EB',
-  borderLight: '#D1D5DB',
+  bgPrimary: '#F8FAFC',      // Slate-50 - Main background
+  bgSecondary: '#FFFFFF',     // White - Cards/sections
+  bgCard: '#F1F5F9',          // Slate-100 - Elevated cards
+  bgHover: '#E2E8F0',         // Slate-200 - Hover states
+  bgAccent: '#EFF6FF',        // Blue-50 - Accent backgrounds
+  textPrimary: '#0F172A',     // Slate-900 - Main text (high contrast)
+  textSecondary: '#334155',   // Slate-700 - Secondary text
+  textMuted: '#64748B',       // Slate-500 - Muted text
+  textHighlight: '#1E40AF',   // Blue-800 - Highlighted text
+  border: '#CBD5E1',          // Slate-300 - Borders
+  borderLight: '#E2E8F0',     // Slate-200 - Light borders
+  shadow: 'rgba(0,0,0,0.08)', // Subtle shadows
 }
 
 export const ThemeProvider = ({ children }) => {

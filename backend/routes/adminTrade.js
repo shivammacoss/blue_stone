@@ -12,12 +12,18 @@ import MasterTrader from '../models/MasterTrader.js'
 const router = express.Router()
 
 // GET /api/admin/trade/all - Get all trades with pagination (for admin dashboard)
+// Only shows B-Book trades - A-Book trades are shown in Book Management
 router.get('/all', async (req, res) => {
   try {
     const { status, limit = 20, offset = 0 } = req.query
 
-    let query = {}
-    if (status) query.status = status
+    // Only show B-Book trades (or trades without bookType for backward compatibility)
+    let query = {
+      $and: [
+        { $or: [{ bookType: 'B' }, { bookType: { $exists: false } }, { bookType: null }] }
+      ]
+    }
+    if (status) query.$and.push({ status })
 
     const total = await Trade.countDocuments(query)
     const trades = await Trade.find(query)
@@ -106,6 +112,11 @@ router.put('/modify/:tradeId', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Trade not found' })
     }
 
+    // A-Book trades cannot be modified
+    if (trade.bookType === 'A') {
+      return res.status(403).json({ success: false, message: 'A-Book trades cannot be modified. These trades are sent to liquidity providers.' })
+    }
+
     if (trade.status !== 'OPEN') {
       return res.status(400).json({ success: false, message: 'Trade is not open' })
     }
@@ -133,6 +144,11 @@ router.put('/edit/:tradeId', async (req, res) => {
     const trade = await Trade.findById(tradeId)
     if (!trade) {
       return res.status(404).json({ success: false, message: 'Trade not found' })
+    }
+
+    // A-Book trades cannot be edited
+    if (trade.bookType === 'A') {
+      return res.status(403).json({ success: false, message: 'A-Book trades cannot be edited. These trades are sent to liquidity providers.' })
     }
 
     const oldValues = {
@@ -238,6 +254,11 @@ router.post('/close/:tradeId', async (req, res) => {
     const trade = await Trade.findById(tradeId)
     if (!trade) {
       return res.status(404).json({ success: false, message: 'Trade not found' })
+    }
+
+    // A-Book trades cannot be closed by admin
+    if (trade.bookType === 'A') {
+      return res.status(403).json({ success: false, message: 'A-Book trades cannot be closed by admin. These trades are managed by liquidity providers.' })
     }
 
     if (trade.status !== 'OPEN') {

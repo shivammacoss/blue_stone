@@ -37,8 +37,12 @@ router.post('/', async (req, res) => {
   try {
     const { userId, accountTypeId, pin } = req.body
 
-    // Validate PIN (4 digits)
-    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+    // PIN is optional - generate a random one if not provided
+    let accountPin = pin
+    if (!accountPin) {
+      // Generate random 4-digit PIN
+      accountPin = String(Math.floor(1000 + Math.random() * 9000))
+    } else if (accountPin.length !== 4 || !/^\d{4}$/.test(accountPin)) {
       return res.status(400).json({ message: 'PIN must be exactly 4 digits' })
     }
 
@@ -66,7 +70,7 @@ router.post('/', async (req, res) => {
       userId,
       accountTypeId,
       accountId,
-      pin,
+      pin: accountPin,
       balance: initialBalance,
       credit: accountType.isDemo ? initialBalance : 0, // Demo balance is non-refundable (credit)
       leverage: accountType.leverage,

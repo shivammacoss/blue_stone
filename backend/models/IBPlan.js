@@ -10,13 +10,13 @@ const ibPlanSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  // Maximum levels for commission distribution
+  // Maximum levels for commission distribution (increased to 50)
   maxLevels: {
     type: Number,
     required: true,
     min: 1,
-    max: 5,
-    default: 3
+    max: 50,
+    default: 5
   },
   // Commission type
   commissionType: {
@@ -24,13 +24,48 @@ const ibPlanSchema = new mongoose.Schema({
     enum: ['PER_LOT', 'PERCENTAGE'],
     default: 'PER_LOT'
   },
-  // Level-wise commission rates
-  levelCommissions: {
-    level1: { type: Number, default: 5 },  // $5 per lot or 30%
-    level2: { type: Number, default: 3 },  // $3 per lot or 20%
-    level3: { type: Number, default: 2 },  // $2 per lot or 10%
-    level4: { type: Number, default: 1 },  // $1 per lot or 5%
-    level5: { type: Number, default: 0.5 } // $0.5 per lot or 2%
+  // Level-wise commission rates (dynamic array for unlimited levels)
+  levelCommissions: [{
+    level: { type: Number, required: true },
+    rate: { type: Number, default: 0 }
+  }],
+  // Legacy fixed levels (for backward compatibility)
+  legacyLevelCommissions: {
+    level1: { type: Number, default: 5 },
+    level2: { type: Number, default: 3 },
+    level3: { type: Number, default: 2 },
+    level4: { type: Number, default: 1 },
+    level5: { type: Number, default: 0.5 }
+  },
+  // Multiple commission types
+  commissionTypes: {
+    // First time joining commission
+    firstJoin: {
+      enabled: { type: Boolean, default: true },
+      levels: [{
+        level: { type: Number, required: true },
+        amount: { type: Number, default: 0 },
+        type: { type: String, enum: ['FIXED', 'PERCENT'], default: 'FIXED' }
+      }]
+    },
+    // Continuous trade commission
+    trade: {
+      enabled: { type: Boolean, default: true },
+      levels: [{
+        level: { type: Number, required: true },
+        amount: { type: Number, default: 0 },
+        type: { type: String, enum: ['PER_LOT', 'PERCENT'], default: 'PER_LOT' }
+      }]
+    },
+    // Referral commission (when downline refers someone)
+    referral: {
+      enabled: { type: Boolean, default: true },
+      levels: [{
+        level: { type: Number, required: true },
+        amount: { type: Number, default: 0 },
+        type: { type: String, enum: ['FIXED', 'PERCENT'], default: 'FIXED' }
+      }]
+    }
   },
   // Commission sources (which charges to share)
   commissionSources: {

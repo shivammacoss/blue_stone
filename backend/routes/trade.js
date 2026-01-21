@@ -7,6 +7,7 @@ import propTradingEngine from '../services/propTradingEngine.js'
 import copyTradingEngine from '../services/copyTradingEngine.js'
 import ibEngine from '../services/ibEngineNew.js'
 import MasterTrader from '../models/MasterTrader.js'
+import { createNotification } from './notifications.js'
 
 const router = express.Router()
 
@@ -25,7 +26,8 @@ router.post('/open', async (req, res) => {
       ask, 
       leverage,
       sl, 
-      tp 
+      tp,
+      entryPrice // For pending orders
     } = req.body
 
     // Validate required fields
@@ -134,30 +136,53 @@ router.post('/open', async (req, res) => {
       parseFloat(ask),
       sl ? parseFloat(sl) : null,
       tp ? parseFloat(tp) : null,
-      leverage // Pass user-selected leverage
+      leverage, // Pass user-selected leverage
+      entryPrice ? parseFloat(entryPrice) : null // Pass entry price for pending orders
     )
 
-    // Check if this is a master trader and copy to followers
-    const master = await MasterTrader.findOne({ 
-      tradingAccountId, 
-      status: 'ACTIVE' 
-    })
-    
-    let copyResults = []
-    if (master) {
-      try {
-        copyResults = await copyTradingEngine.copyTradeToFollowers(trade, master._id)
-        console.log(`Copied trade to ${copyResults.filter(r => r.status === 'SUCCESS').length} followers`)
-      } catch (copyError) {
-        console.error('Error copying trade to followers:', copyError)
-      }
-    }
-
+    // Send response immediately for faster execution
     res.json({
       success: true,
       message: 'Trade opened successfully',
-      trade,
-      copyResults: copyResults.length > 0 ? copyResults : undefined
+      trade
+    })
+
+    // Create notification for trade open (non-blocking)
+    setImmediate(async () => {
+      try {
+        const notifType = orderType === 'MARKET' ? 'TRADE_OPEN' : 'PENDING_ORDER'
+        const notifTitle = orderType === 'MARKET' ? 'Trade Opened' : 'Pending Order Placed'
+        const notifMessage = orderType === 'MARKET' 
+          ? `${side} ${symbol} ${quantity} lots at ${trade.openPrice?.toFixed(5)}`
+          : `${orderType.replace('_', ' ')} ${symbol} at ${entryPrice || trade.entryPrice} - ${quantity} lots`
+        
+        await createNotification(userId, notifType, notifTitle, notifMessage, {
+          tradeId: trade._id,
+          symbol,
+          side,
+          lotSize: quantity,
+          price: trade.openPrice || entryPrice
+        })
+      } catch (notifError) {
+        console.error('[Background] Error creating trade notification:', notifError)
+      }
+    })
+
+    // Process copy trading in background (non-blocking)
+    setImmediate(async () => {
+      try {
+        const master = await MasterTrader.findOne({ 
+          tradingAccountId, 
+          status: 'ACTIVE' 
+        })
+        
+        if (master) {
+          const copyResults = await copyTradingEngine.copyTradeToFollowers(trade, master._id)
+          console.log(`[Background] Copied trade to ${copyResults.filter(r => r.status === 'SUCCESS').length} followers`)
+        }
+      } catch (copyError) {
+        console.error('[Background] Error copying trade to followers:', copyError)
+      }
     })
   } catch (error) {
     console.error('Error opening trade:', error)
@@ -237,44 +262,69 @@ router.post('/close', async (req, res) => {
       'USER'
     )
 
-    // Check if this was a master trade and close follower trades
-    if (tradeToClose) {
-      console.log(`[CopyTrade] Checking if trade ${tradeId} belongs to a master. TradingAccountId: ${tradeToClose.tradingAccountId}`)
-      const master = await MasterTrader.findOne({ 
-        tradingAccountId: tradeToClose.tradingAccountId, 
-        status: 'ACTIVE' 
-      })
-      
-      console.log(`[CopyTrade] Master found: ${master ? master._id : 'NO MASTER FOUND'}`)
-      
-      if (master) {
-        try {
-          const closePrice = tradeToClose.side === 'BUY' ? parseFloat(bid) : parseFloat(ask)
-          console.log(`[CopyTrade] Calling closeFollowerTrades for master trade ${tradeId} at price ${closePrice}`)
-          const copyResults = await copyTradingEngine.closeFollowerTrades(tradeId, closePrice)
-          console.log(`[CopyTrade] Closed ${copyResults.length} follower trades for master trade ${tradeId}`)
-        } catch (copyError) {
-          console.error('[CopyTrade] Error closing follower trades:', copyError)
-        }
-      }
-    }
-
-    // Process IB commission for the closed trade
-    try {
-      const ibResult = await ibEngine.processTradeCommission(result.trade)
-      if (ibResult.processed) {
-        console.log(`IB commission processed for trade ${result.trade._id}: ${ibResult.commissions?.length || 0} IBs credited`)
-      }
-    } catch (ibError) {
-      console.error('Error processing IB commission:', ibError)
-    }
-
+    // Send response immediately for faster execution
     res.json({
       success: true,
       message: 'Trade closed successfully',
       trade: result.trade,
-      realizedPnl: result.realizedPnl
+      realizedPnl: result.trade.realizedPnl
     })
+
+    // Create notification for trade close (non-blocking)
+    setImmediate(async () => {
+      try {
+        const pnl = result.trade.realizedPnl || 0
+        const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`
+        const notifType = result.trade.closeReason === 'STOP_LOSS' ? 'STOP_LOSS_HIT' 
+          : result.trade.closeReason === 'TAKE_PROFIT' ? 'TAKE_PROFIT_HIT' 
+          : 'TRADE_CLOSE'
+        const notifTitle = result.trade.closeReason === 'STOP_LOSS' ? 'Stop Loss Hit'
+          : result.trade.closeReason === 'TAKE_PROFIT' ? 'Take Profit Hit'
+          : 'Trade Closed'
+        
+        await createNotification(result.trade.userId, notifType, notifTitle, 
+          `${result.trade.symbol} closed with ${pnlStr} ${pnl >= 0 ? 'profit' : 'loss'}`, {
+          tradeId: result.trade._id,
+          symbol: result.trade.symbol,
+          side: result.trade.side,
+          pnl: pnl,
+          closePrice: result.trade.closePrice,
+          closeReason: result.trade.closeReason
+        })
+      } catch (notifError) {
+        console.error('[Background] Error creating close notification:', notifError)
+      }
+    })
+
+    // Process copy trading and IB commission in background (non-blocking)
+    setImmediate(async () => {
+      try {
+        // Check if this was a master trade and close follower trades
+        const master = await MasterTrader.findOne({ 
+          tradingAccountId: tradeToClose.tradingAccountId, 
+          status: 'ACTIVE' 
+        })
+        
+        if (master) {
+          const closePrice = tradeToClose.side === 'BUY' ? parseFloat(bid) : parseFloat(ask)
+          const copyResults = await copyTradingEngine.closeFollowerTrades(tradeId, closePrice)
+          console.log(`[Background] Closed ${copyResults.length} follower trades`)
+        }
+      } catch (copyError) {
+        console.error('[Background] Error closing follower trades:', copyError)
+      }
+
+      // Process IB commission
+      try {
+        const ibResult = await ibEngine.processTradeCommission(result.trade)
+        if (ibResult.processed) {
+          console.log(`[Background] IB commission processed: ${ibResult.commissions?.length || 0} IBs credited`)
+        }
+      } catch (ibError) {
+        console.error('[Background] Error processing IB commission:', ibError)
+      }
+    })
+
   } catch (error) {
     console.error('Error closing trade:', error)
     res.status(400).json({ 

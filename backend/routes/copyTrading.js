@@ -1,4 +1,5 @@
 import express from 'express'
+import mongoose from 'mongoose'
 import MasterTrader from '../models/MasterTrader.js'
 import CopyFollower from '../models/CopyFollower.js'
 import CopyTrade from '../models/CopyTrade.js'
@@ -94,8 +95,26 @@ router.get('/masters', async (req, res) => {
       .populate('userId', 'firstName lastName')
       .select('-pendingCommission -totalCommissionEarned -totalCommissionWithdrawn')
       .sort({ 'stats.totalFollowers': -1 })
+      .lean()
 
-    res.json({ masters })
+    // Add total commission (master + admin share) for display to users
+    const mastersWithTotalCommission = masters.map(master => {
+      const masterCommission = master.approvedCommissionPercentage || 0
+      const adminSharePercent = master.adminSharePercentage || 30
+      // Total commission user pays = master commission + (master commission * admin share / (100 - admin share))
+      // Example: master 10%, admin takes 30% of total → user pays ~14.3% total
+      // Simpler: if admin takes 30% of commission, master gets 70%, so total = master / 0.7
+      const totalCommission = adminSharePercent < 100 ? 
+        Math.round((masterCommission / (1 - adminSharePercent / 100)) * 10) / 10 : 
+        masterCommission
+      return {
+        ...master,
+        totalCommissionPercentage: totalCommission,
+        masterCommissionPercentage: masterCommission
+      }
+    })
+
+    res.json({ masters: mastersWithTotalCommission })
   } catch (error) {
     res.status(500).json({ message: 'Error fetching masters', error: error.message })
   }
@@ -147,6 +166,54 @@ router.post('/master/withdraw', async (req, res) => {
     })
   } catch (error) {
     res.status(400).json({ message: error.message })
+  }
+})
+
+// GET /api/copy/master/commissions/:masterId - Get master's commission history
+router.get('/master/commissions/:masterId', async (req, res) => {
+  try {
+    const { masterId } = req.params
+    const { limit = 50, status } = req.query
+
+    const query = { masterId }
+    if (status) query.status = status
+
+    const commissions = await CopyCommission.find(query)
+      .populate('followerUserId', 'firstName lastName email')
+      .populate('followerAccountId', 'accountId')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+
+    // Calculate totals
+    const totals = await CopyCommission.aggregate([
+      { $match: { masterId: new mongoose.Types.ObjectId(masterId) } },
+      {
+        $group: {
+          _id: null,
+          totalDailyProfit: { $sum: '$dailyProfit' },
+          totalCommission: { $sum: '$totalCommission' },
+          totalMasterShare: { $sum: '$masterShare' },
+          totalAdminShare: { $sum: '$adminShare' }
+        }
+      }
+    ])
+
+    // Get master profile for pending/withdrawn amounts
+    const master = await MasterTrader.findById(masterId)
+
+    res.json({
+      success: true,
+      commissions,
+      totals: totals[0] || { totalDailyProfit: 0, totalCommission: 0, totalMasterShare: 0, totalAdminShare: 0 },
+      masterStats: {
+        pendingCommission: master?.pendingCommission || 0,
+        totalCommissionEarned: master?.totalCommissionEarned || 0,
+        totalCommissionWithdrawn: master?.totalCommissionWithdrawn || 0
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching master commissions:', error)
+    res.status(500).json({ message: 'Error fetching commissions', error: error.message })
   }
 })
 

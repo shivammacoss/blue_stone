@@ -60,6 +60,8 @@ const WalletPage = () => {
   const [screenshot, setScreenshot] = useState(null)
   const [screenshotPreview, setScreenshotPreview] = useState(null)
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false)
+  const [kycStatus, setKycStatus] = useState(null)
+  const [showKycWarning, setShowKycWarning] = useState(false)
   const fileInputRef = useRef(null)
 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -124,10 +126,23 @@ const WalletPage = () => {
     if (user._id) {
       fetchWallet()
       fetchTransactions()
+      fetchKycStatus()
     }
     fetchPaymentMethods()
     fetchCurrencies()
   }, [user._id])
+
+  const fetchKycStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/kyc/status/${user._id}`)
+      const data = await res.json()
+      if (data.success && data.hasKYC) {
+        setKycStatus(data.kyc)
+      }
+    } catch (error) {
+      console.error('Error fetching KYC status:', error)
+    }
+  }
 
   const fetchCurrencies = async () => {
     try {
@@ -283,6 +298,12 @@ const WalletPage = () => {
   }
 
   const handleWithdraw = async () => {
+    // Check KYC status before allowing withdrawal
+    if (!kycStatus || kycStatus.status?.toUpperCase() !== 'APPROVED') {
+      setShowKycWarning(true)
+      return
+    }
+
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount')
       return
@@ -877,6 +898,46 @@ const WalletPage = () => {
               >
                 Submit Withdrawal
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KYC Warning Modal */}
+      {showKycWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <XCircle size={32} className="text-yellow-500" />
+              </div>
+              <h3 className={`text-xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>KYC Required</h3>
+              <p className={`mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                {!kycStatus 
+                  ? 'You need to complete KYC verification before making withdrawals.'
+                  : kycStatus.status?.toUpperCase() === 'PENDING'
+                    ? 'Your KYC is pending approval. Please wait for verification.'
+                    : kycStatus.status?.toUpperCase() === 'REJECTED'
+                      ? 'Your KYC was rejected. Please resubmit with valid documents.'
+                      : 'Please complete your KYC verification to proceed.'}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowKycWarning(false)}
+                  className={`flex-1 py-3 rounded-lg ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowKycWarning(false)
+                    navigate('/profile')
+                  }}
+                  className="flex-1 bg-accent-green text-black font-medium py-3 rounded-lg hover:bg-accent-green/90"
+                >
+                  Complete KYC
+                </button>
+              </div>
             </div>
           </div>
         </div>

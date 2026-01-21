@@ -105,6 +105,28 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   
+  // A-Book / B-Book assignment
+  bookType: {
+    type: String,
+    enum: ['A', 'B'],
+    default: 'B'  // Default to B-Book (internal management)
+  },
+  bookChangedAt: {
+    type: Date,
+    default: null
+  },
+  bookChangedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    default: null
+  },
+  
+  // Profile Image
+  profileImage: {
+    type: String,
+    default: null
+  },
+  
   // Bank Details for Withdrawals
   bankDetails: {
     bankName: { type: String, default: '' },

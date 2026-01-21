@@ -24,6 +24,10 @@ import kycRoutes from './routes/kyc.js'
 import themeRoutes from './routes/theme.js'
 import adminManagementRoutes from './routes/adminManagement.js'
 import uploadRoutes from './routes/upload.js'
+import newsRoutes from './routes/news.js'
+import notificationsRoutes from './routes/notifications.js'
+import bookManagementRoutes from './routes/bookManagement.js'
+import referralRoutes from './routes/referralRoutes.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -59,17 +63,42 @@ const METAAPI_SYMBOLS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'XAGUSD', 'USDJPY', 'USDC
 const META_API_TOKEN = process.env.META_API_TOKEN || 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJiYmRlZGVjYWJjMDAzOTczNTQ3ODk2Y2NlYjgyNzY2NSIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiXSwicmVzb3VyY2VzIjpbImFjY291bnQ6JFVTRVJfSUQkOjVmYTc1OGVjLWIyNDEtNGM5Ny04MWM0LTlkZTNhM2JjMWYwNCJdfV0sImlhdCI6MTc2ODIxODA3MSwiZXhwIjoxNzc1OTk0MDcxfQ.stub'
 const META_API_ACCOUNT_ID = process.env.META_API_ACCOUNT_ID || '5fa758ec-b241-4c97-81c4-9de3a3bc1f04'
 
-// Fetch MetaAPI price
+// Fallback symbol mapping for Twelve Data API
+const TWELVEDATA_SYMBOLS = {
+  'EURUSD': 'EUR/USD', 'GBPUSD': 'GBP/USD', 'USDJPY': 'USD/JPY', 'USDCHF': 'USD/CHF',
+  'AUDUSD': 'AUD/USD', 'NZDUSD': 'NZD/USD', 'USDCAD': 'USD/CAD', 'EURGBP': 'EUR/GBP',
+  'EURJPY': 'EUR/JPY', 'GBPJPY': 'GBP/JPY', 'XAUUSD': 'XAU/USD', 'XAGUSD': 'XAG/USD'
+}
+
+// Fetch price from Twelve Data (free fallback)
+async function fetchTwelveDataPrice(symbol) {
+  const tdSymbol = TWELVEDATA_SYMBOLS[symbol]
+  if (!tdSymbol) return null
+  try {
+    const response = await fetch(`https://api.twelvedata.com/price?symbol=${tdSymbol}&apikey=demo`)
+    if (!response.ok) return null
+    const data = await response.json()
+    if (data.price) {
+      const price = parseFloat(data.price)
+      const spread = symbol.includes('XAU') ? 0.5 : symbol.includes('XAG') ? 0.02 : 0.0002
+      return { bid: price - spread/2, ask: price + spread/2, time: Date.now() }
+    }
+    return null
+  } catch (e) { return null }
+}
+
+// Fetch MetaAPI price with fallback
 async function fetchMetaApiPrice(symbol) {
   try {
     const response = await fetch(
       `https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/${META_API_ACCOUNT_ID}/symbols/${symbol}/current-price`,
       { headers: { 'auth-token': META_API_TOKEN, 'Content-Type': 'application/json' } }
     )
-    if (!response.ok) return null
+    if (!response.ok) return await fetchTwelveDataPrice(symbol)
     const data = await response.json()
-    return data.bid ? { bid: data.bid, ask: data.ask || data.bid, time: Date.now() } : null
-  } catch (e) { return null }
+    if (data.error) return await fetchTwelveDataPrice(symbol)
+    return data.bid ? { bid: data.bid, ask: data.ask || data.bid, time: Date.now() } : await fetchTwelveDataPrice(symbol)
+  } catch (e) { return await fetchTwelveDataPrice(symbol) }
 }
 
 // Background price streaming - runs every 500ms for Binance, every 3s for MetaAPI
@@ -139,16 +168,44 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id)
 
   // Subscribe to real-time price stream
-  socket.on('subscribePrices', () => {
+  socket.on('subscribePrices', async () => {
     socket.join('prices')
     priceSubscribers.add(socket.id)
+    
+    // If cache is empty, fetch prices immediately
+    if (priceCache.size === 0) {
+      console.log('Price cache empty, fetching initial prices...')
+      // Fetch Binance prices first (fast)
+      try {
+        const response = await fetch('https://api.binance.com/api/v3/ticker/bookTicker')
+        if (response.ok) {
+          const tickers = await response.json()
+          const tickerMap = {}
+          tickers.forEach(t => { tickerMap[t.symbol] = t })
+          Object.keys(BINANCE_SYMBOLS).forEach(symbol => {
+            const ticker = tickerMap[BINANCE_SYMBOLS[symbol]]
+            if (ticker) {
+              priceCache.set(symbol, { bid: parseFloat(ticker.bidPrice), ask: parseFloat(ticker.askPrice), time: Date.now() })
+            }
+          })
+        }
+      } catch (e) { console.error('Initial Binance fetch error:', e.message) }
+      
+      // Fetch a few forex prices
+      const forexToFetch = ['XAUUSD', 'EURUSD', 'GBPUSD']
+      await Promise.allSettled(forexToFetch.map(async (symbol) => {
+        const price = await fetchMetaApiPrice(symbol)
+        if (price) priceCache.set(symbol, price)
+      }))
+    }
+    
     // Send current prices immediately
     socket.emit('priceStream', {
       prices: Object.fromEntries(priceCache),
       updated: {},
       timestamp: Date.now()
     })
-    console.log(`Socket ${socket.id} subscribed to price stream`)
+    console.log(`Socket ${socket.id} subscribed to price stream, cache size: ${priceCache.size}`)
   })
 
   // Unsubscribe from price stream
@@ -230,6 +287,10 @@ app.use('/api/kyc', kycRoutes)
 app.use('/api/theme', themeRoutes)
 app.use('/api/admin-mgmt', adminManagementRoutes)
 app.use('/api/upload', uploadRoutes)
+app.use('/api/news', newsRoutes)
+app.use('/api/notifications', notificationsRoutes)
+app.use('/api/book-management', bookManagementRoutes)
+app.use('/api/referral', referralRoutes)
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
@@ -240,6 +301,6 @@ app.get('/', (req, res) => {
 })
 
 const PORT = process.env.PORT || 5000
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`)
 })

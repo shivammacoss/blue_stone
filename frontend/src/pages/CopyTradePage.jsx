@@ -18,6 +18,9 @@ const CopyTradePage = () => {
   const [mySubscriptions, setMySubscriptions] = useState([])
   const [myCopyTrades, setMyCopyTrades] = useState([])
   const [myFollowers, setMyFollowers] = useState([])
+  const [myCommissions, setMyCommissions] = useState([])
+  const [commissionTotals, setCommissionTotals] = useState(null)
+  const [masterStats, setMasterStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showFollowModal, setShowFollowModal] = useState(false)
   const [selectedMaster, setSelectedMaster] = useState(null)
@@ -76,10 +79,11 @@ const CopyTradePage = () => {
     fetchMyMasterProfile()
   }, [])
 
-  // Fetch my followers when master profile is loaded
+  // Fetch my followers and commissions when master profile is loaded
   useEffect(() => {
     if (myMasterProfile?._id) {
       fetchMyFollowers()
+      fetchMyCommissions()
     }
   }, [myMasterProfile])
 
@@ -91,6 +95,55 @@ const CopyTradePage = () => {
       setMyFollowers(data.followers || [])
     } catch (error) {
       console.error('Error fetching my followers:', error)
+    }
+  }
+
+  const fetchMyCommissions = async () => {
+    if (!myMasterProfile?._id) return
+    try {
+      const res = await fetch(`${API_URL}/copy/master/commissions/${myMasterProfile._id}`)
+      const data = await res.json()
+      if (data.success) {
+        setMyCommissions(data.commissions || [])
+        setCommissionTotals(data.totals)
+        setMasterStats(data.masterStats)
+      }
+    } catch (error) {
+      console.error('Error fetching commissions:', error)
+    }
+  }
+
+  const handleWithdrawCommission = async () => {
+    if (!myMasterProfile?._id || !masterStats?.pendingCommission) return
+    
+    const amount = masterStats.pendingCommission
+    if (amount < 10) {
+      alert('Minimum withdrawal amount is $10')
+      return
+    }
+    
+    if (!confirm(`Withdraw $${amount.toFixed(2)} commission to your wallet?`)) return
+    
+    try {
+      const res = await fetch(`${API_URL}/copy/master/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          masterId: myMasterProfile._id,
+          amount
+        })
+      })
+      const data = await res.json()
+      if (data.message) {
+        alert('Commission withdrawn successfully!')
+        fetchMyCommissions()
+        fetchMyMasterProfile()
+      } else {
+        alert(data.message || 'Failed to withdraw')
+      }
+    } catch (error) {
+      console.error('Error withdrawing:', error)
+      alert('Failed to withdraw commission')
     }
   }
 
@@ -467,7 +520,7 @@ const CopyTradePage = () => {
 
           {/* Tabs - Scrollable on mobile */}
           <div className={`flex ${isMobile ? 'gap-2 overflow-x-auto pb-2' : 'gap-4'} mb-4`}>
-            {['discover', 'subscriptions', 'trades', ...(myMasterProfile?.status === 'ACTIVE' ? ['my-followers'] : [])].map(tab => (
+            {['discover', 'subscriptions', 'trades', ...(myMasterProfile?.status === 'ACTIVE' ? ['my-followers', 'commissions'] : [])].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -477,7 +530,8 @@ const CopyTradePage = () => {
               >
                 {tab === 'discover' ? 'Discover' : 
                  tab === 'subscriptions' ? 'Subscriptions' : 
-                 tab === 'trades' ? 'Trades' : 'Followers'}
+                 tab === 'trades' ? 'Trades' : 
+                 tab === 'my-followers' ? 'Followers' : 'Commissions'}
               </button>
             ))}
           </div>
@@ -537,7 +591,7 @@ const CopyTradePage = () => {
                           </div>
                           <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
                             <p className="text-gray-500 text-xs">Commission</p>
-                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.approvedCommissionPercentage || 0}%</p>
+                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.totalCommissionPercentage || master.approvedCommissionPercentage || 0}%</p>
                           </div>
                           <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
                             <p className="text-gray-500 text-xs">Profit</p>
@@ -777,6 +831,117 @@ const CopyTradePage = () => {
               )}
             </div>
           )}
+
+          {/* Commission Tab (for Master Traders) */}
+          {activeTab === 'commissions' && myMasterProfile?.status === 'ACTIVE' && (
+            <div>
+              {/* Commission Stats Cards */}
+              <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4 mb-6`}>
+                <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-4 border`}>
+                  <p className="text-gray-500 text-xs mb-1">Pending Commission</p>
+                  <p className="text-purple-400 text-xl font-bold">${masterStats?.pendingCommission?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-4 border`}>
+                  <p className="text-gray-500 text-xs mb-1">Total Earned</p>
+                  <p className="text-accent-green text-xl font-bold">${masterStats?.totalCommissionEarned?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-4 border`}>
+                  <p className="text-gray-500 text-xs mb-1">Total Withdrawn</p>
+                  <p className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>${masterStats?.totalCommissionWithdrawn?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-4 border`}>
+                  <p className="text-gray-500 text-xs mb-1">Your Commission Rate</p>
+                  <p className="text-blue-400 text-xl font-bold">{myMasterProfile?.approvedCommissionPercentage || 0}%</p>
+                </div>
+              </div>
+
+              {/* Withdraw Button */}
+              {masterStats?.pendingCommission >= 10 && (
+                <div className={`${isDarkMode ? 'bg-purple-500/10 border-purple-500/30' : 'bg-purple-50 border-purple-200'} rounded-xl p-4 border mb-6`}>
+                  <div className={`flex ${isMobile ? 'flex-col gap-3' : 'items-center justify-between'}`}>
+                    <div>
+                      <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        You have ${masterStats.pendingCommission.toFixed(2)} available to withdraw
+                      </p>
+                      <p className="text-gray-500 text-sm">Minimum withdrawal: $10</p>
+                    </div>
+                    <button
+                      onClick={handleWithdrawCommission}
+                      className="bg-purple-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-600 flex items-center gap-2"
+                    >
+                      <DollarSign size={16} />
+                      Withdraw to Wallet
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Commission History */}
+              <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl border`}>
+                <div className={`px-5 py-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Commission History</h3>
+                  <p className="text-gray-500 text-sm">Daily profit share from your followers</p>
+                </div>
+                
+                {myCommissions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <DollarSign size={48} className="mx-auto text-gray-600 mb-4" />
+                    <p className="text-gray-500">No commission records yet</p>
+                    <p className="text-gray-600 text-sm mt-2">Commission is calculated daily from followers' profits</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className={isDarkMode ? 'bg-dark-700' : 'bg-gray-50'}>
+                        <tr>
+                          <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Date</th>
+                          <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Follower</th>
+                          <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Daily Profit</th>
+                          <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Rate</th>
+                          <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Your Share</th>
+                          <th className={`text-left text-xs font-medium px-4 py-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myCommissions.map(comm => (
+                          <tr key={comm._id} className={`border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+                            <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{comm.tradingDay}</td>
+                            <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {comm.followerUserId?.firstName || 'User'} {comm.followerUserId?.lastName || ''}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-accent-green font-medium">${comm.dailyProfit?.toFixed(2)}</td>
+                            <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{comm.commissionPercentage}%</td>
+                            <td className="px-4 py-3 text-sm text-purple-400 font-medium">${comm.masterShare?.toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                comm.status === 'DEDUCTED' ? 'bg-green-500/20 text-green-500' :
+                                comm.status === 'SETTLED' ? 'bg-blue-500/20 text-blue-500' :
+                                comm.status === 'FAILED' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'
+                              }`}>
+                                {comm.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Commission Info */}
+              <div className={`mt-6 ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-5 border`}>
+                <h4 className={`font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>How Commission Works</h4>
+                <ul className="text-gray-500 text-sm space-y-2">
+                  <li>• Commission is calculated daily based on your followers' profits</li>
+                  <li>• Your rate: <span className="text-purple-400 font-medium">{myMasterProfile?.approvedCommissionPercentage}%</span> of daily profit</li>
+                  <li>• Commission is only charged when followers make profit</li>
+                  <li>• Minimum withdrawal amount is $10</li>
+                  <li>• Withdrawals are transferred to your wallet instantly</li>
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -848,7 +1013,8 @@ const CopyTradePage = () => {
               </div>
 
               <div className="bg-dark-700 rounded-lg p-3">
-                <p className="text-gray-400 text-sm">Commission: <span className="text-white">{selectedMaster.approvedCommissionPercentage}%</span> of daily profit</p>
+                <p className="text-gray-400 text-sm">Commission: <span className="text-white">{selectedMaster.totalCommissionPercentage || selectedMaster.approvedCommissionPercentage}%</span> of daily profit</p>
+                <p className="text-gray-500 text-xs mt-1">({selectedMaster.masterCommissionPercentage || selectedMaster.approvedCommissionPercentage}% to master + platform fee)</p>
               </div>
             </div>
 

@@ -20,7 +20,9 @@ import {
   X,
   ChevronDown,
   ChevronRight,
-  Palette
+  Palette,
+  BookOpen,
+  Layers
 } from 'lucide-react'
 
 const AdminLayout = ({ children, title, subtitle }) => {
@@ -34,6 +36,7 @@ const AdminLayout = ({ children, title, subtitle }) => {
     { name: 'Overview Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
     { name: 'User Management', icon: Users, path: '/admin/users' },
     { name: 'Trade Management', icon: TrendingUp, path: '/admin/trades' },
+    { name: 'Book Management', icon: BookOpen, path: '/admin/book-management' },
     { name: 'Fund Management', icon: Wallet, path: '/admin/funds' },
     { name: 'Bank Settings', icon: Building2, path: '/admin/bank-settings' },
     { name: 'IB Management', icon: UserCog, path: '/admin/ib-management' },

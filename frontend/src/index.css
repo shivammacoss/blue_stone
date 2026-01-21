@@ -63,8 +63,8 @@ body {
 .theme-error { color: var(--theme-error); }
 .theme-buy { color: var(--theme-buyColor); }
 .theme-sell { color: var(--theme-sellColor); }
-.theme-profit { color: var(--theme-profitColor); }
-.theme-loss { color: var(--theme-lossColor); }
+.theme-profit { color: var(--theme-profitColor) !important; }
+.theme-loss { color: var(--theme-lossColor) !important; }
 
 /* Accent color backgrounds */
 .bg-accent-theme { background-color: var(--theme-accent); }

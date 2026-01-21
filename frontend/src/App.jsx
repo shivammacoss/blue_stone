@@ -36,12 +36,15 @@ import AdminPropTrading from './pages/AdminPropTrading'
 import AdminEarnings from './pages/AdminEarnings'
 import ForgotPassword from './pages/ForgotPassword'
 import AdminThemeSettings from './pages/AdminThemeSettings'
+import AdminBookManagement from './pages/AdminBookManagement'
 import BrandedLogin from './pages/BrandedLogin'
 import BrandedSignup from './pages/BrandedSignup'
+import ChatBot from './components/ChatBot'
 
 function App() {
   return (
     <Router>
+      <ChatBot />
       <Routes>
         <Route path="/" element={<Signup />} />
         <Route path="/user/signup" element={<Signup />} />
@@ -79,6 +82,7 @@ function App() {
         <Route path="/admin/prop-trading" element={<AdminPropTrading />} />
         <Route path="/admin/earnings" element={<AdminEarnings />} />
         <Route path="/admin/theme" element={<AdminThemeSettings />} />
+        <Route path="/admin/book-management" element={<AdminBookManagement />} />
         <Route path="/buy-challenge" element={<BuyChallengePage />} />
         <Route path="/challenge-dashboard" element={<ChallengeDashboardPage />} />
         <Route path="/:slug/login" element={<BrandedLogin />} />

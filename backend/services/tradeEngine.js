@@ -3,7 +3,9 @@ import TradingAccount from '../models/TradingAccount.js'
 import Charges from '../models/Charges.js'
 import TradeSettings from '../models/TradeSettings.js'
 import AdminLog from '../models/AdminLog.js'
+import User from '../models/User.js'
 import ibEngine from './ibEngineNew.js'
+import referralEngine from './referralEngine.js'
 
 class TradeEngine {
   constructor() {
@@ -196,7 +198,7 @@ class TradeEngine {
   }
 
   // Open a new trade
-  async openTrade(userId, tradingAccountId, symbol, segment, side, orderType, quantity, bid, ask, sl = null, tp = null, userLeverage = null) {
+  async openTrade(userId, tradingAccountId, symbol, segment, side, orderType, quantity, bid, ask, sl = null, tp = null, userLeverage = null, entryPrice = null) {
     const account = await TradingAccount.findById(tradingAccountId).populate('accountTypeId')
     if (!account) throw new Error('Trading account not found')
 
@@ -258,6 +260,14 @@ class TradeEngine {
     // Generate trade ID
     const tradeId = await Trade.generateTradeId()
 
+    // For pending orders, use entryPrice if provided, otherwise use calculated openPrice
+    const finalOpenPrice = (orderType !== 'MARKET' && entryPrice) ? entryPrice : openPrice
+    const finalPendingPrice = orderType !== 'MARKET' ? (entryPrice || openPrice) : null
+
+    // Get user's book type (A or B)
+    const user = await User.findById(userId).select('bookType')
+    const userBookType = user?.bookType || 'B'
+
     // Create trade
     const trade = await Trade.create({
       userId,
@@ -268,7 +278,7 @@ class TradeEngine {
       side,
       orderType,
       quantity,
-      openPrice,
+      openPrice: finalOpenPrice,
       stopLoss: sl,
       takeProfit: tp,
       marginUsed: marginRequired,
@@ -279,7 +289,8 @@ class TradeEngine {
       swap: 0,
       floatingPnl: 0,
       status: orderType === 'MARKET' ? 'OPEN' : 'PENDING',
-      pendingPrice: orderType !== 'MARKET' ? openPrice : null
+      pendingPrice: finalPendingPrice,
+      bookType: userBookType
     })
 
     // Deduct commission from trading account balance when trade opens
@@ -373,11 +384,18 @@ class TradeEngine {
       })
     }
 
-    // Process IB commission for this trade
+    // Process IB commission for this trade (legacy)
     try {
       await ibEngine.processTradeCommission(trade)
     } catch (ibError) {
       console.error('Error processing IB commission:', ibError)
+    }
+
+    // Process new Referral Income commission
+    try {
+      await referralEngine.processReferralIncome(trade)
+    } catch (refError) {
+      console.error('Error processing Referral Income:', refError)
     }
 
     // Close follower trades if this is a master trade
@@ -408,15 +426,19 @@ class TradeEngine {
     const previousValue = { stopLoss: trade.stopLoss, takeProfit: trade.takeProfit }
 
     // Update both stopLoss/takeProfit and sl/tp fields for compatibility
-    // Handle NaN values - treat as null
-    if (sl !== null && !isNaN(sl)) {
-      trade.stopLoss = sl
-      trade.sl = sl
+    // Allow setting to null (clearing) or to a valid number
+    if (sl !== undefined) {
+      const slValue = (sl !== null && !isNaN(sl)) ? sl : null
+      trade.stopLoss = slValue
+      trade.sl = slValue
     }
-    if (tp !== null && !isNaN(tp)) {
-      trade.takeProfit = tp
-      trade.tp = tp
+    if (tp !== undefined) {
+      const tpValue = (tp !== null && !isNaN(tp)) ? tp : null
+      trade.takeProfit = tpValue
+      trade.tp = tpValue
     }
+    
+    console.log('Modifying trade SL/TP:', { tradeId, sl: trade.stopLoss, tp: trade.takeProfit })
 
     if (adminId) {
       trade.adminModified = true

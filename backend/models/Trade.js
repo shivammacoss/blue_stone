@@ -143,6 +143,21 @@ const tradeSchema = new mongoose.Schema({
   adminModifiedAt: {
     type: Date,
     default: null
+  },
+  
+  // A-Book / B-Book tracking
+  bookType: {
+    type: String,
+    enum: ['A', 'B'],
+    default: 'B'  // Default to B-Book
+  },
+  aBookExecuted: {
+    type: Boolean,
+    default: false  // Whether trade was sent to liquidity provider
+  },
+  aBookOrderId: {
+    type: String,
+    default: null  // External order ID from LP
   }
 }, { timestamps: true })
 

@@ -249,6 +249,43 @@ router.put('/admin/assign/:ticketId', async (req, res) => {
   }
 })
 
+// POST /api/support/chat-request - Save chatbot requests for human support
+router.post('/chat-request', async (req, res) => {
+  try {
+    const { userId, userName, message, messages, type } = req.body
+
+    // Create a support ticket from chatbot
+    const ticket = await SupportTicket.create({
+      userId: userId || null,
+      subject: type === 'human_request' ? 'Human Support Request' : 
+               type === 'human_escalation' ? 'Escalated from Chatbot' : 
+               'Question from Chatbot',
+      category: 'CHATBOT',
+      priority: type === 'human_escalation' ? 'HIGH' : 'MEDIUM',
+      messages: [{
+        sender: 'USER',
+        senderId: userId,
+        senderName: userName || 'Guest',
+        message: message || (messages ? JSON.stringify(messages.slice(-5)) : 'No message provided')
+      }],
+      metadata: {
+        source: 'chatbot',
+        type: type,
+        originalMessages: messages
+      }
+    })
+
+    res.json({
+      success: true,
+      message: 'Request saved successfully',
+      ticketId: ticket.ticketId
+    })
+  } catch (error) {
+    console.error('Error saving chat request:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
 // PUT /api/support/admin/priority/:ticketId - Update ticket priority
 router.put('/admin/priority/:ticketId', async (req, res) => {
   try {

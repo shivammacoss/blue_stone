@@ -25,7 +25,44 @@ const BINANCE_SYMBOLS = {
 // MetaAPI symbols (forex + metals)
 const METAAPI_SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'XAUUSD', 'XAGUSD']
 
-// Fetch price from MetaAPI (forex/metals)
+// Fallback symbol mapping for Twelve Data API
+const TWELVEDATA_SYMBOLS = {
+  'EURUSD': 'EUR/USD',
+  'GBPUSD': 'GBP/USD',
+  'USDJPY': 'USD/JPY',
+  'USDCHF': 'USD/CHF',
+  'AUDUSD': 'AUD/USD',
+  'NZDUSD': 'NZD/USD',
+  'USDCAD': 'USD/CAD',
+  'EURGBP': 'EUR/GBP',
+  'EURJPY': 'EUR/JPY',
+  'GBPJPY': 'GBP/JPY',
+  'XAUUSD': 'XAU/USD',
+  'XAGUSD': 'XAG/USD'
+}
+
+// Fetch price from Twelve Data (free fallback)
+async function getTwelveDataPrice(symbol) {
+  const tdSymbol = TWELVEDATA_SYMBOLS[symbol]
+  if (!tdSymbol) return null
+  
+  try {
+    const response = await fetch(`https://api.twelvedata.com/price?symbol=${tdSymbol}&apikey=demo`)
+    if (!response.ok) return null
+    const data = await response.json()
+    if (data.price) {
+      const price = parseFloat(data.price)
+      // Add small spread for bid/ask
+      const spread = symbol.includes('XAU') ? 0.5 : symbol.includes('XAG') ? 0.02 : 0.0002
+      return { bid: price - spread/2, ask: price + spread/2 }
+    }
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+// Fetch price from MetaAPI (forex/metals) with fallback
 async function getMetaApiPrice(symbol) {
   try {
     const response = await fetch(
@@ -38,17 +75,21 @@ async function getMetaApiPrice(symbol) {
       }
     )
     if (!response.ok) {
-      console.error(`MetaAPI error for ${symbol}: ${response.status}`)
-      return null
+      // Try fallback on rate limit or error
+      return await getTwelveDataPrice(symbol)
     }
     const data = await response.json()
+    if (data.error) {
+      // Rate limited - use fallback
+      return await getTwelveDataPrice(symbol)
+    }
     if (data.bid) {
       return { bid: data.bid, ask: data.ask || data.bid }
     }
-    return null
+    return await getTwelveDataPrice(symbol)
   } catch (e) {
     console.error(`MetaAPI error for ${symbol}:`, e.message)
-    return null
+    return await getTwelveDataPrice(symbol)
   }
 }
 

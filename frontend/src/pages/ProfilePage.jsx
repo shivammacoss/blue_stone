@@ -212,6 +212,7 @@ const ProfilePage = () => {
     city: storedUser.city || '',
     country: storedUser.country || '',
     dateOfBirth: storedUser.dateOfBirth || '',
+    profileImage: storedUser.profileImage || null,
     bankDetails: storedUser.bankDetails || {
       bankName: '',
       accountNumber: '',
@@ -221,6 +222,22 @@ const ProfilePage = () => {
     },
     upiId: storedUser.upiId || ''
   })
+
+  // Handle profile image upload
+  const handleProfileImageChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image size should be less than 2MB')
+        return
+      }
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setProfile(prev => ({ ...prev, profileImage: reader.result }))
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
@@ -364,15 +381,29 @@ const ProfilePage = () => {
             <div className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl ${isMobile ? 'p-4' : 'p-6'} border mb-4`}>
               <div className={`flex ${isMobile ? 'flex-col' : ''} items-center gap-4`}>
                 <div className="relative">
-                  <div className={`${isMobile ? 'w-16 h-16' : 'w-24 h-24'} bg-accent-green/20 rounded-full flex items-center justify-center`}>
-                    <span className={`text-accent-green font-bold ${isMobile ? 'text-xl' : 'text-3xl'}`}>
-                      {profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}
-                    </span>
-                  </div>
+                  {profile.profileImage ? (
+                    <img 
+                      src={profile.profileImage} 
+                      alt="Profile" 
+                      className={`${isMobile ? 'w-16 h-16' : 'w-24 h-24'} rounded-full object-cover border-2 border-accent-green`}
+                    />
+                  ) : (
+                    <div className={`${isMobile ? 'w-16 h-16' : 'w-24 h-24'} bg-accent-green/20 rounded-full flex items-center justify-center`}>
+                      <span className={`text-accent-green font-bold ${isMobile ? 'text-xl' : 'text-3xl'}`}>
+                        {profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}
+                      </span>
+                    </div>
+                  )}
                   {editing && (
-                    <button className="absolute bottom-0 right-0 w-6 h-6 bg-accent-green rounded-full flex items-center justify-center">
-                      <Camera size={12} className="text-black" />
-                    </button>
+                    <label className="absolute bottom-0 right-0 w-8 h-8 bg-accent-green rounded-full flex items-center justify-center cursor-pointer hover:bg-accent-green/80 transition-colors">
+                      <Camera size={14} className="text-black" />
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleProfileImageChange}
+                        className="hidden"
+                      />
+                    </label>
                   )}
                 </div>
                 <div className={isMobile ? 'text-center' : ''}>
@@ -380,9 +411,21 @@ const ProfilePage = () => {
                   <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{profile.email}</p>
                   <div className={`flex ${isMobile ? 'justify-center flex-wrap' : ''} items-center gap-2 mt-2`}>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      storedUser.kycApproved ? 'bg-green-500/20 text-green-500' : 'bg-yellow-500/20 text-yellow-500'
+                      kycStatus?.status?.toUpperCase() === 'APPROVED' 
+                        ? 'bg-green-500/20 text-green-500' 
+                        : kycStatus?.status?.toUpperCase() === 'PENDING'
+                          ? 'bg-yellow-500/20 text-yellow-500'
+                          : kycStatus?.status?.toUpperCase() === 'REJECTED'
+                            ? 'bg-red-500/20 text-red-500'
+                            : 'bg-gray-500/20 text-gray-500'
                     }`}>
-                      {storedUser.kycApproved ? 'Verified' : 'Pending'}
+                      {kycStatus?.status?.toUpperCase() === 'APPROVED' 
+                        ? 'Verified' 
+                        : kycStatus?.status?.toUpperCase() === 'PENDING'
+                          ? 'Pending'
+                          : kycStatus?.status?.toUpperCase() === 'REJECTED'
+                            ? 'Rejected'
+                            : 'Not Submitted'}
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-500">
                       Since {new Date(storedUser.createdAt).toLocaleDateString()}

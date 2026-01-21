@@ -26,13 +26,39 @@ const ibLevelSchema = new mongoose.Schema({
     enum: ['PER_LOT', 'PERCENT'],
     default: 'PER_LOT'
   },
-  // Downline commission distribution (level-wise)
+  // Multiple commission types distribution
+  // First Time Joining Commission - one-time when referral joins
+  firstJoinCommission: [{
+    level: { type: Number, required: true },
+    amount: { type: Number, default: 0 },
+    type: { type: String, enum: ['FIXED', 'PERCENT'], default: 'FIXED' }
+  }],
+  // Continuous Trade Commission - ongoing from referral trades
+  tradeCommission: [{
+    level: { type: Number, required: true },
+    amount: { type: Number, default: 0 },
+    type: { type: String, enum: ['PER_LOT', 'PERCENT'], default: 'PER_LOT' }
+  }],
+  // Referral Commission - when downline refers someone
+  referralCommission: [{
+    level: { type: Number, required: true },
+    amount: { type: Number, default: 0 },
+    type: { type: String, enum: ['FIXED', 'PERCENT'], default: 'FIXED' }
+  }],
+  // Legacy downline commission (kept for backward compatibility)
   downlineCommission: {
     level1: { type: Number, default: 0 },
     level2: { type: Number, default: 0 },
     level3: { type: Number, default: 0 },
     level4: { type: Number, default: 0 },
     level5: { type: Number, default: 0 }
+  },
+  // Maximum downline levels (can be up to 20+)
+  maxDownlineLevels: {
+    type: Number,
+    default: 5,
+    min: 1,
+    max: 50
   },
   color: {
     type: String,

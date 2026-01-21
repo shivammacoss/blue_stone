@@ -4,7 +4,7 @@ const ibCommissionSchema = new mongoose.Schema({
   tradeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Trade',
-    required: true
+    default: null
   },
   traderUserId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -16,13 +16,18 @@ const ibCommissionSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // For referral bonus - the IB who made the referral
+  referringIBId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   level: {
     type: Number,
     required: true
   },
   baseAmount: {
     type: Number,
-    required: true,
     default: 0
   },
   commissionAmount: {
@@ -32,19 +37,20 @@ const ibCommissionSchema = new mongoose.Schema({
   },
   symbol: {
     type: String,
-    required: true
+    default: null
   },
   tradeLotSize: {
     type: Number,
-    required: true
+    default: null
   },
   contractSize: {
     type: Number,
     default: 100000
   },
+  // Extended commission types
   commissionType: {
     type: String,
-    enum: ['PER_LOT', 'PERCENT'],
+    enum: ['PER_LOT', 'PERCENT', 'TRADE', 'FIRST_JOIN', 'REFERRAL_BONUS'],
     required: true
   },
   status: {

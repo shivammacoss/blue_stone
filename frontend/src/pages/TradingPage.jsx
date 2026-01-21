@@ -1144,60 +1144,89 @@ const TradingPage = () => {
           </div>
         )}
         
-        {/* Top Header */}
-        <header className={`h-10 sm:h-8 border-b flex items-center px-2 sm:px-3 shrink-0 ${isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'}`}>
-          <span className={`font-medium text-sm sm:text-base ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInstrument.symbol}</span>
-          {!isMobile && (
-            <>
-              <span className={`ml-3 text-xs ${accountType === 'challenge' ? 'text-yellow-500' : 'text-teal-400'}`}>
-                {accountType === 'challenge' ? 'Challenge' : 'Standard'} - {account?.accountId}
-              </span>
-              <span className="text-gray-400 ml-3 text-xs">Balance: <span className="text-white">${accountSummary.balance?.toFixed(2) || '0.00'}</span></span>
-            </>
-          )}
-          <div className="flex-1" />
-          <span className="text-red-500 font-mono text-xs sm:text-sm mr-1 sm:mr-2">{selectedInstrument.bid?.toFixed(2)}</span>
-          <span className="text-green-500 font-mono text-xs sm:text-sm mr-2 sm:mr-4">{selectedInstrument.ask?.toFixed(2)}</span>
-          <button 
-            onClick={() => setShowOrderPanel(!showOrderPanel)}
-            className="bg-teal-500 hover:bg-teal-600 text-white text-xs px-2 sm:px-3 py-1 rounded"
-          >
-            {isMobile ? 'Order' : 'New Order'}
-          </button>
-          {/* Kill Switch Button - One click to activate (30min default), long press for options */}
-          <button 
-            onClick={() => killSwitchActive ? deactivateKillSwitch() : quickActivateKillSwitch()}
-            onContextMenu={(e) => { e.preventDefault(); if (!killSwitchActive) setShowKillSwitchModal(true) }}
-            className={`ml-2 text-xs px-2 sm:px-3 py-1 rounded flex items-center gap-1 ${
-              killSwitchActive 
-                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
-                : 'bg-orange-500 hover:bg-orange-600 text-white'
-            }`}
-            title={killSwitchActive ? `Click to deactivate (${killSwitchTimeLeft} left)` : 'Click: Activate 30min | Right-click: Custom duration'}
-          >
-            {killSwitchActive ? (
-              <>
-                <span className="hidden sm:inline">🛑 {killSwitchTimeLeft}</span>
-                <span className="sm:hidden">🛑</span>
-              </>
-            ) : (
-              <>
-                <span className="hidden sm:inline">🛑 Kill Switch</span>
-                <span className="sm:hidden">🛑</span>
-              </>
-            )}
-          </button>
-          <button onClick={() => setShowOrderPanel(!showOrderPanel)} className="ml-1 sm:ml-2 text-gray-400 hover:text-white">
-            <Settings size={16} />
-          </button>
-          <button 
-            onClick={toggleDarkMode}
-            className={`ml-1 sm:ml-2 p-1.5 rounded transition-colors ${isDarkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-blue-500 hover:text-blue-400'}`}
-            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-            {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+        {/* Top Header - Two rows on mobile for better visibility */}
+        <header className={`border-b shrink-0 ${isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'}`}>
+          {/* First Row - Symbol, Account Type, Balance */}
+          <div className={`h-8 flex items-center px-2 sm:px-3 ${isMobile ? 'border-b border-gray-800/50' : ''}`}>
+            <span className={`font-medium text-sm sm:text-base shrink-0 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInstrument.symbol}</span>
+            <span className={`ml-2 sm:ml-3 text-xs shrink-0 ${accountType === 'challenge' ? 'text-yellow-500' : 'text-teal-400'}`}>
+              {accountType === 'challenge' ? 'Challenge' : 'Standard'}{!isMobile && ` - ${account?.accountId}`}
+            </span>
+            <span className={`ml-2 sm:ml-3 text-xs shrink-0 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Bal: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>${accountSummary.balance?.toFixed(2) || '0.00'}</span>
+            </span>
+            <div className="flex-1 min-w-2" />
+            {/* Prices - always visible */}
+            <span className="text-red-500 font-mono text-xs sm:text-sm shrink-0 mr-1 sm:mr-2">{selectedInstrument.bid?.toFixed(2)}</span>
+            <span className="text-green-500 font-mono text-xs sm:text-sm shrink-0">{selectedInstrument.ask?.toFixed(2)}</span>
+          </div>
+          {/* Second Row on Mobile / Same Row on Desktop - Action Buttons */}
+          <div className={`${isMobile ? 'h-9 px-2 flex items-center justify-between' : 'hidden'}`}>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowOrderPanel(!showOrderPanel)}
+                className="bg-teal-500 hover:bg-teal-600 text-white text-xs px-3 py-1.5 rounded"
+              >
+                Order
+              </button>
+              <button 
+                onClick={() => killSwitchActive ? deactivateKillSwitch() : quickActivateKillSwitch()}
+                onContextMenu={(e) => { e.preventDefault(); if (!killSwitchActive) setShowKillSwitchModal(true) }}
+                className={`text-xs px-3 py-1.5 rounded flex items-center gap-1 ${
+                  killSwitchActive 
+                    ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                🛑 {killSwitchActive ? killSwitchTimeLeft : 'Kill'}
+              </button>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setShowOrderPanel(!showOrderPanel)} className="p-1.5 text-gray-400 hover:text-white">
+                <Settings size={16} />
+              </button>
+              <button 
+                onClick={toggleDarkMode}
+                className={`p-1.5 rounded transition-colors ${isDarkMode ? 'text-yellow-400' : 'text-blue-500'}`}
+              >
+                {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
+          </div>
         </header>
+        {/* Desktop Action Buttons - Separate row to avoid overlap */}
+        {!isMobile && (
+          <div className={`h-8 border-b flex items-center justify-end px-3 gap-2 shrink-0 ${isDarkMode ? 'bg-black/50 border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
+            <button 
+              onClick={() => setShowOrderPanel(!showOrderPanel)}
+              className="bg-teal-500 hover:bg-teal-600 text-white text-xs px-3 py-1 rounded"
+            >
+              New Order
+            </button>
+            <button 
+              onClick={() => killSwitchActive ? deactivateKillSwitch() : quickActivateKillSwitch()}
+              onContextMenu={(e) => { e.preventDefault(); if (!killSwitchActive) setShowKillSwitchModal(true) }}
+              className={`text-xs px-3 py-1 rounded flex items-center gap-1 ${
+                killSwitchActive 
+                  ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
+                  : 'bg-orange-500 hover:bg-orange-600 text-white'
+              }`}
+              title={killSwitchActive ? `Click to deactivate (${killSwitchTimeLeft} left)` : 'Click: Activate 30min | Right-click: Custom duration'}
+            >
+              🛑 {killSwitchActive ? killSwitchTimeLeft : 'Kill Switch'}
+            </button>
+            <button onClick={() => setShowOrderPanel(!showOrderPanel)} className="text-gray-400 hover:text-white">
+              <Settings size={16} />
+            </button>
+            <button 
+              onClick={toggleDarkMode}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-blue-500 hover:text-blue-400'}`}
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+        )}
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
@@ -1375,41 +1404,45 @@ const TradingPage = () => {
                 ))}
               </div>
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                {!isMobile && (
+                {/* One Click Toggle */}
+                <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>One Click</span>
+                <button
+                  onClick={() => setOneClickTrading(!oneClickTrading)}
+                  className={`w-10 h-5 rounded-full relative transition-colors ${oneClickTrading ? 'bg-blue-600' : (isDarkMode ? 'bg-gray-600' : 'bg-gray-400')}`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${oneClickTrading ? 'left-5' : 'left-0.5'}`} />
+                </button>
+                
+                {/* S, Lot Size, B - Only visible when One Click is ON */}
+                {oneClickTrading && (
                   <>
-                    <span className="text-sm text-gray-500">One Click</span>
-                    <button
-                      onClick={() => setOneClickTrading(!oneClickTrading)}
-                      className={`w-10 h-5 rounded-full relative transition-colors ${oneClickTrading ? 'bg-blue-600' : 'bg-gray-600'}`}
+                    <button 
+                      onClick={() => executeMarketOrder('SELL')}
+                      disabled={isExecutingTrade}
+                      className="w-8 h-8 rounded-full bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${oneClickTrading ? 'left-5' : 'left-0.5'}`} />
+                      S
                     </button>
-                    {oneClickTrading && (
-                      <>
-                        <button 
-                          onClick={() => executeMarketOrder('SELL')}
-                          disabled={isExecutingTrade}
-                          className="w-8 h-8 rounded-full bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
-                        >
-                          S
-                        </button>
-                        <input
-                          type="text"
-                          value={volume}
-                          onChange={(e) => setVolume(e.target.value)}
-                          className="w-14 h-7 bg-[#1a1a1a] border border-gray-600 rounded text-center text-white text-sm font-medium focus:outline-none focus:border-blue-500"
-                        />
-                        <button 
-                          onClick={() => executeMarketOrder('BUY')}
-                          disabled={isExecutingTrade}
-                          className="w-8 h-8 rounded-full bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors disabled:opacity-50"
-                        >
-                          B
-                        </button>
-                      </>
-                    )}
+                    <input
+                      type="text"
+                      value={volume}
+                      onChange={(e) => setVolume(e.target.value)}
+                      className={`w-14 h-7 rounded text-center text-sm font-medium focus:outline-none focus:border-blue-500 ${
+                        isDarkMode 
+                          ? 'bg-[#1a1a1a] border border-gray-600 text-white' 
+                          : 'bg-white border border-gray-300 text-gray-900'
+                      }`}
+                    />
+                    <button 
+                      onClick={() => executeMarketOrder('BUY')}
+                      disabled={isExecutingTrade}
+                      className="w-8 h-8 rounded-full bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition-colors disabled:opacity-50"
+                    >
+                      B
+                    </button>
                   </>
                 )}
+                
                 <span className="text-xs sm:text-sm text-gray-500">P/L: <span className={accountSummary.floatingPnl >= 0 ? 'text-green-500' : 'text-red-500'}>{accountSummary.floatingPnl >= 0 ? '+' : ''}${accountSummary.floatingPnl?.toFixed(2) || '0.00'}</span></span>
               </div>
             </div>

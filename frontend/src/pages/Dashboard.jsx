@@ -44,6 +44,9 @@ const Dashboard = () => {
   const [challengeModeEnabled, setChallengeModeEnabled] = useState(false)
   const [marketNews, setMarketNews] = useState([])
   const [currentNewsIndex, setCurrentNewsIndex] = useState(0)
+  const [marketWatchNews, setMarketWatchNews] = useState([])
+  const [marketWatchLoading, setMarketWatchLoading] = useState(true)
+  const [kycStatus, setKycStatus] = useState(null)
   const tradingViewRef = useRef(null)
   const economicCalendarRef = useRef(null)
   const forexHeatmapRef = useRef(null)
@@ -104,8 +107,21 @@ const Dashboard = () => {
     if (user._id) {
       fetchWalletBalance()
       fetchUserAccounts()
+      fetchKycStatus()
     }
   }, [user._id])
+
+  const fetchKycStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/kyc/status/${user._id}`)
+      const data = await res.json()
+      if (data.success && data.hasKYC) {
+        setKycStatus(data.kyc)
+      }
+    } catch (error) {
+      console.error('Error fetching KYC status:', error)
+    }
+  }
   
   // Fetch trades after accounts are loaded
   useEffect(() => {
@@ -326,26 +342,83 @@ const Dashboard = () => {
     navigate('/user/login')
   }
 
-  // Load TradingView widgets
+  // Fetch MarketWatch news
   useEffect(() => {
-    // TradingView Timeline Widget (News)
-    if (tradingViewRef.current) {
-      tradingViewRef.current.innerHTML = ''
-      const script = document.createElement('script')
-      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-timeline.js'
-      script.async = true
-      script.innerHTML = JSON.stringify({
-        "feedMode": "all_symbols",
-        "colorTheme": "dark",
-        "isTransparent": true,
-        "displayMode": "regular",
-        "width": "100%",
-        "height": "100%",
-        "locale": "en"
-      })
-      tradingViewRef.current.appendChild(script)
+    const fetchMarketWatchNews = async () => {
+      setMarketWatchLoading(true)
+      try {
+        const response = await fetch(`${API_URL}/news/marketwatch`)
+        const data = await response.json()
+        
+        if (data.success && data.news) {
+          setMarketWatchNews(data.news)
+        }
+      } catch (error) {
+        console.error('Error fetching MarketWatch news:', error)
+        // Fallback to RSS feed parsing
+        try {
+          const rssResponse = await fetch('https://feeds.content.dowjones.io/public/rss/mw_topstories')
+          const rssText = await rssResponse.text()
+          const items = parseRSSFeed(rssText)
+          setMarketWatchNews(items)
+        } catch (rssError) {
+          console.error('RSS fallback failed:', rssError)
+          setMarketWatchNews([
+            { id: '1', title: 'Markets Update: Loading latest news...', source: 'MarketWatch', time: 'Just now', category: 'Markets', url: 'https://www.marketwatch.com' },
+          ])
+        }
+      } finally {
+        setMarketWatchLoading(false)
+      }
     }
 
+    const parseRSSFeed = (xmlText) => {
+      const items = []
+      const itemMatches = xmlText.match(/<item>([\s\S]*?)<\/item>/g) || []
+      
+      itemMatches.slice(0, 20).forEach((item, index) => {
+        const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || item.match(/<title>(.*?)<\/title>/)
+        const linkMatch = item.match(/<link>(.*?)<\/link>/)
+        const pubDateMatch = item.match(/<pubDate>(.*?)<\/pubDate>/)
+        const categoryMatch = item.match(/<category>(.*?)<\/category>/)
+        
+        if (titleMatch) {
+          items.push({
+            id: `mw-${index}`,
+            title: titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim(),
+            url: linkMatch ? linkMatch[1] : 'https://www.marketwatch.com',
+            time: pubDateMatch ? formatMarketWatchTime(pubDateMatch[1]) : '',
+            category: categoryMatch ? categoryMatch[1] : 'Markets',
+            source: 'MarketWatch'
+          })
+        }
+      })
+      
+      return items
+    }
+
+    const formatMarketWatchTime = (datetime) => {
+      if (!datetime) return ''
+      const now = new Date()
+      const date = new Date(datetime)
+      const diffMs = now - date
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMins / 60)
+      const diffDays = Math.floor(diffHours / 24)
+      
+      if (diffMins < 1) return 'Just now'
+      if (diffMins < 60) return `${diffMins}m ago`
+      if (diffHours < 24) return `${diffHours}h ago`
+      return `${diffDays}d ago`
+    }
+
+    fetchMarketWatchNews()
+    const interval = setInterval(fetchMarketWatchNews, 30000) // Refresh every 30 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  // Load TradingView widgets
+  useEffect(() => {
     // TradingView Economic Calendar Widget
     if (economicCalendarRef.current) {
       economicCalendarRef.current.innerHTML = ''
@@ -469,85 +542,71 @@ const Dashboard = () => {
 
       {/* Main Content - Scrollable */}
       <main className="flex-1 overflow-y-auto">
-        {/* Market News Slider - Top Banner */}
-        {marketNews.length > 0 && (
-          <div className={`relative border-b ${isDarkMode ? 'bg-gradient-to-r from-dark-800 via-dark-900 to-dark-800 border-gray-800' : 'bg-gradient-to-r from-gray-100 via-white to-gray-100 border-gray-200'}`}>
-            <div className="flex items-center">
-              {/* News Label */}
-              <div className="bg-red-500 px-4 py-3 flex items-center gap-2">
-                <Newspaper size={16} className="text-white" />
-                <span className="text-white font-bold text-sm uppercase">Breaking</span>
-              </div>
-              
-              {/* News Slider */}
-              <div className="flex-1 overflow-hidden relative">
-                <div 
-                  className="flex transition-transform duration-500 ease-in-out"
-                  style={{ transform: `translateX(-${currentNewsIndex * 100}%)` }}
-                >
-                  {marketNews.map((item, index) => (
-                    <a 
-                      key={index}
-                      href={item.link || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`min-w-full flex items-center gap-4 px-4 py-2 transition-colors ${isDarkMode ? 'hover:bg-dark-700/50' : 'hover:bg-gray-100'}`}
-                    >
-                      {item.image_url && (
-                        <img 
-                          src={item.image_url} 
-                          alt="" 
-                          className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                          onError={(e) => e.target.style.display = 'none'}
-                        />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-medium text-sm truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</p>
-                        <p className={`text-xs truncate ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.description}</p>
-                      </div>
-                      <ExternalLink size={14} className="text-gray-500 flex-shrink-0" />
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              {/* Navigation Buttons */}
-              <div className="flex items-center gap-1 px-2">
-                <button 
-                  onClick={prevNews}
-                  className={`p-1.5 rounded transition-colors ${isDarkMode ? 'hover:bg-dark-700 text-gray-400 hover:text-white' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-900'}`}
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button 
-                  onClick={nextNews}
-                  className={`p-1.5 rounded transition-colors ${isDarkMode ? 'hover:bg-dark-700 text-gray-400 hover:text-white' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-900'}`}
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-
-              {/* Dots Indicator */}
-              <div className={`flex items-center gap-1 px-3 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-300'}`}>
-                {marketNews.slice(0, 8).map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentNewsIndex(index)}
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                      currentNewsIndex === index ? 'bg-accent-green' : isDarkMode ? 'bg-gray-600' : 'bg-gray-300'
-                    }`}
-                  />
-                ))}
-              </div>
+        {/* Welcome Header */}
+        <header className={`flex items-center justify-between px-6 py-5 border-b ${isDarkMode ? 'border-gray-800 bg-gradient-to-r from-dark-800 to-dark-900' : 'border-gray-200 bg-gradient-to-r from-gray-50 to-white'}`}>
+          <div>
+            <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>Welcome back,</p>
+            <h1 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.name || user.email || 'Trader'}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className={`px-3 py-1.5 rounded-full ${isDarkMode ? 'bg-accent-green/20' : 'bg-green-100'}`}>
+              <span className="text-accent-green text-sm font-medium">Active</span>
             </div>
           </div>
-        )}
-
-        {/* Simple Header */}
-        <header className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-          <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dashboard</h1>
-          <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Welcome back!</p>
         </header>
+
+        {/* KYC Notification Banner */}
+        {(!kycStatus || kycStatus.status?.toUpperCase() !== 'APPROVED') && (
+          <div className={`mx-6 mt-4 p-4 rounded-xl border flex items-center justify-between ${
+            !kycStatus 
+              ? 'bg-yellow-500/10 border-yellow-500/30' 
+              : kycStatus.status?.toUpperCase() === 'PENDING' 
+                ? 'bg-blue-500/10 border-blue-500/30'
+                : 'bg-red-500/10 border-red-500/30'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                !kycStatus 
+                  ? 'bg-yellow-500/20' 
+                  : kycStatus.status?.toUpperCase() === 'PENDING' 
+                    ? 'bg-blue-500/20'
+                    : 'bg-red-500/20'
+              }`}>
+                {!kycStatus ? (
+                  <FileText size={20} className="text-yellow-500" />
+                ) : kycStatus.status?.toUpperCase() === 'PENDING' ? (
+                  <RefreshCw size={20} className="text-blue-500" />
+                ) : (
+                  <FileText size={20} className="text-red-500" />
+                )}
+              </div>
+              <div>
+                <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {!kycStatus 
+                    ? 'Complete Your KYC' 
+                    : kycStatus.status?.toUpperCase() === 'PENDING' 
+                      ? 'KYC Verification Pending'
+                      : 'KYC Rejected'}
+                </p>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {!kycStatus 
+                    ? 'Verify your identity to enable withdrawals' 
+                    : kycStatus.status?.toUpperCase() === 'PENDING' 
+                      ? 'Your documents are being reviewed'
+                      : 'Please resubmit your documents'}
+                </p>
+              </div>
+            </div>
+            {(!kycStatus || kycStatus.status?.toUpperCase() === 'REJECTED') && (
+              <button
+                onClick={() => navigate('/profile')}
+                className="bg-accent-green text-black px-4 py-2 rounded-lg font-medium hover:bg-accent-green/90 transition-colors"
+              >
+                Complete KYC
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Dashboard Content */}
         <div className="p-6">
@@ -606,6 +665,108 @@ const Dashboard = () => {
             </div>
           </div>
 
+          {/* MarketWatch News & Economic Calendar */}
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            {/* MarketWatch News */}
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                    <Newspaper size={20} className="text-blue-500" />
+                  </div>
+                  <div>
+                    <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>MarketWatch News</h2>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time market updates</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-medium text-green-500">LIVE</span>
+                </div>
+              </div>
+              <div className="h-[500px] overflow-y-auto custom-scrollbar">
+                {marketWatchLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <RefreshCw size={24} className="text-accent-green animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {marketWatchNews.slice(0, 20).map((item, index) => (
+                      <a
+                        key={item.id || index}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`block rounded-xl overflow-hidden transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-dark-700 border border-gray-800 hover:border-gray-700' : 'bg-gray-50 border border-gray-200 hover:border-gray-300 shadow-sm'}`}
+                      >
+                        {item.image && (
+                          <div className="relative h-40 overflow-hidden">
+                            <img 
+                              src={item.image} 
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => e.target.style.display = 'none'}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                            <div className="absolute bottom-3 left-3 right-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs px-2 py-0.5 rounded bg-blue-500/80 text-white font-medium">
+                                  {item.category || 'Markets'}
+                                </span>
+                                <span className="text-xs text-white/80">{item.time}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div className="p-4">
+                          {!item.image && (
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`text-xs px-2 py-0.5 rounded ${isDarkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
+                                {item.category || 'Markets'}
+                              </span>
+                              <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.time}</span>
+                            </div>
+                          )}
+                          <h3 className={`text-sm font-semibold line-clamp-2 mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</h3>
+                          {item.summary && (
+                            <p className={`text-xs line-clamp-2 mb-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.summary}</p>
+                          )}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-4 h-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                              </div>
+                              <span className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.source || 'MarketWatch'}</span>
+                            </div>
+                            <ExternalLink size={14} className={`${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Economic Calendar - TradingView Widget */}
+            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                  <Calendar size={20} className="text-purple-500" />
+                </div>
+                <div>
+                  <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Economic Calendar</h2>
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time events from TradingView</p>
+                </div>
+              </div>
+              <div className="h-96 overflow-hidden rounded-lg">
+                <div ref={economicCalendarRef} className="tradingview-widget-container h-full">
+                  <div className="tradingview-widget-container__widget h-full"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Forex Heatmap */}
           <div className={`rounded-xl p-5 border mb-6 ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
             <div className="flex items-center gap-3 mb-4">
@@ -642,44 +803,6 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Market News & Economic Calendar - TradingView Widgets */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* Market News - TradingView Timeline Widget */}
-            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                  <Newspaper size={20} className="text-blue-500" />
-                </div>
-                <div>
-                  <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Market News</h2>
-                  <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time updates from TradingView</p>
-                </div>
-              </div>
-              <div className="h-96 overflow-hidden rounded-lg">
-                <div ref={tradingViewRef} className="tradingview-widget-container h-full">
-                  <div className="tradingview-widget-container__widget h-full"></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Economic Calendar - TradingView Widget */}
-            <div className={`rounded-xl p-5 border ${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                  <Calendar size={20} className="text-purple-500" />
-                </div>
-                <div>
-                  <h2 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Economic Calendar</h2>
-                  <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-600'}`}>Real-time events from TradingView</p>
-                </div>
-              </div>
-              <div className="h-96 overflow-hidden rounded-lg">
-                <div ref={economicCalendarRef} className="tradingview-widget-container h-full">
-                  <div className="tradingview-widget-container__widget h-full"></div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
     </div>

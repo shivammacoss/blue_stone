@@ -91,6 +91,7 @@ router.post('/signup', async (req, res) => {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
+    console.log('[Login] Request received:', { email: req.body.email, hasPassword: !!req.body.password })
     const { email, password } = req.body
 
     // Find user by email
@@ -197,7 +198,7 @@ router.get('/me', async (req, res) => {
 // PUT /api/auth/update-profile - Update user profile
 router.put('/update-profile', async (req, res) => {
   try {
-    const { userId, firstName, lastName, phone, address, city, country, dateOfBirth, bankDetails, upiId } = req.body
+    const { userId, firstName, lastName, phone, address, city, country, dateOfBirth, bankDetails, upiId, profileImage } = req.body
 
     const user = await User.findById(userId)
     if (!user) {
@@ -212,6 +213,7 @@ router.put('/update-profile', async (req, res) => {
     if (city !== undefined) user.city = city
     if (country !== undefined) user.country = country
     if (dateOfBirth !== undefined) user.dateOfBirth = dateOfBirth
+    if (profileImage !== undefined) user.profileImage = profileImage
 
     // Update bank details
     if (bankDetails) {
@@ -243,6 +245,7 @@ router.put('/update-profile', async (req, res) => {
         dateOfBirth: user.dateOfBirth,
         bankDetails: user.bankDetails,
         upiId: user.upiId,
+        profileImage: user.profileImage,
         createdAt: user.createdAt
       }
     })

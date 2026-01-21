@@ -89,11 +89,12 @@ class IBEngine {
 
     user.ibStatus = 'ACTIVE'
     
+    // Assign initial IB level (Standard - order 1)
+    await this.assignInitialLevel(userId)
+    
+    // Plan is optional now - commission is based on IB Levels
     if (planId) {
       user.ibPlanId = planId
-    } else {
-      const defaultPlan = await IBPlan.getDefaultPlan()
-      user.ibPlanId = defaultPlan._id
     }
 
     await user.save()
@@ -607,6 +608,296 @@ class IBEngine {
     }
 
     return user
+  }
+
+  // Get IB chain with extended levels (up to 50)
+  async getIBChainExtended(userId, maxLevels = 50) {
+    const chain = []
+    let currentUser = await User.findById(userId)
+    
+    if (!currentUser) return chain
+
+    let parentId = currentUser.parentIBId
+    let level = 1
+
+    while (parentId && level <= maxLevels) {
+      const parentIB = await User.findById(parentId)
+        .populate('ibPlanId')
+        .populate('ibLevelId')
+      
+      if (!parentIB || !parentIB.isIB || parentIB.ibStatus !== 'ACTIVE') {
+        break
+      }
+
+      chain.push({
+        ibUser: parentIB,
+        level,
+        ibLevel: parentIB.ibLevelId
+      })
+
+      parentId = parentIB.parentIBId
+      level++
+    }
+
+    return chain
+  }
+
+  // Process First Join Commission - when a new user joins via referral
+  async processFirstJoinCommission(newUserId, depositAmount = 0) {
+    console.log(`Processing First Join Commission for user ${newUserId}`)
+    
+    const ibChain = await this.getIBChainExtended(newUserId)
+    
+    if (ibChain.length === 0) {
+      console.log('No IB chain found for new user')
+      return { processed: false, reason: 'No IB chain found' }
+    }
+
+    const commissionResults = []
+
+    for (const { ibUser, level, ibLevel } of ibChain) {
+      try {
+        // Get commission config from IB's level
+        const levelConfig = ibLevel || await IBLevel.findById(ibUser.ibLevelId)
+        if (!levelConfig) continue
+
+        // Check if level is within max downline levels
+        if (level > (levelConfig.maxDownlineLevels || 5)) continue
+
+        // Find first join commission for this level
+        const commissionConfig = levelConfig.firstJoinCommission?.find(c => c.level === level)
+        if (!commissionConfig || commissionConfig.amount <= 0) continue
+
+        // Calculate commission
+        let commissionAmount = 0
+        if (commissionConfig.type === 'FIXED') {
+          commissionAmount = commissionConfig.amount
+        } else if (commissionConfig.type === 'PERCENT' && depositAmount > 0) {
+          commissionAmount = depositAmount * (commissionConfig.amount / 100)
+        }
+
+        if (commissionAmount <= 0) continue
+
+        // Check for duplicate
+        const existingCommission = await IBCommission.findOne({
+          traderUserId: newUserId,
+          ibUserId: ibUser._id,
+          level,
+          commissionType: 'FIRST_JOIN'
+        })
+        
+        if (existingCommission) continue
+
+        // Create commission record
+        const commission = await IBCommission.create({
+          traderUserId: newUserId,
+          ibUserId: ibUser._id,
+          level,
+          baseAmount: depositAmount,
+          commissionAmount,
+          commissionType: 'FIRST_JOIN',
+          status: 'CREDITED'
+        })
+
+        // Credit IB wallet
+        const wallet = await IBWallet.getOrCreateWallet(ibUser._id)
+        await wallet.creditCommission(commissionAmount)
+
+        commissionResults.push({
+          ibUserId: ibUser._id,
+          ibName: ibUser.firstName,
+          level,
+          commissionAmount,
+          type: 'FIRST_JOIN'
+        })
+
+        console.log(`First Join Commission: Level ${level} IB ${ibUser.firstName} earned $${commissionAmount.toFixed(2)}`)
+
+      } catch (error) {
+        console.error(`Error processing first join commission for level ${level}:`, error)
+      }
+    }
+
+    return {
+      processed: true,
+      commissionsGenerated: commissionResults.length,
+      results: commissionResults
+    }
+  }
+
+  // Process Referral Commission - when a downline IB refers someone new
+  async processReferralCommission(referringIBId, newReferralId) {
+    console.log(`Processing Referral Commission for IB ${referringIBId} referring ${newReferralId}`)
+    
+    // Get the upline chain of the referring IB
+    const ibChain = await this.getIBChainExtended(referringIBId)
+    
+    if (ibChain.length === 0) {
+      console.log('No upline IB chain found')
+      return { processed: false, reason: 'No upline IB chain found' }
+    }
+
+    const commissionResults = []
+
+    for (const { ibUser, level, ibLevel } of ibChain) {
+      try {
+        const levelConfig = ibLevel || await IBLevel.findById(ibUser.ibLevelId)
+        if (!levelConfig) continue
+
+        if (level > (levelConfig.maxDownlineLevels || 5)) continue
+
+        // Find referral commission for this level
+        const commissionConfig = levelConfig.referralCommission?.find(c => c.level === level)
+        if (!commissionConfig || commissionConfig.amount <= 0) continue
+
+        let commissionAmount = commissionConfig.amount // Fixed amount for referral bonus
+
+        if (commissionAmount <= 0) continue
+
+        // Check for duplicate
+        const existingCommission = await IBCommission.findOne({
+          traderUserId: newReferralId,
+          ibUserId: ibUser._id,
+          level,
+          commissionType: 'REFERRAL_BONUS',
+          referringIBId: referringIBId
+        })
+        
+        if (existingCommission) continue
+
+        // Create commission record
+        const commission = await IBCommission.create({
+          traderUserId: newReferralId,
+          ibUserId: ibUser._id,
+          referringIBId: referringIBId,
+          level,
+          baseAmount: 0,
+          commissionAmount,
+          commissionType: 'REFERRAL_BONUS',
+          status: 'CREDITED'
+        })
+
+        // Credit IB wallet
+        const wallet = await IBWallet.getOrCreateWallet(ibUser._id)
+        await wallet.creditCommission(commissionAmount)
+
+        commissionResults.push({
+          ibUserId: ibUser._id,
+          ibName: ibUser.firstName,
+          level,
+          commissionAmount,
+          type: 'REFERRAL_BONUS'
+        })
+
+        console.log(`Referral Commission: Level ${level} IB ${ibUser.firstName} earned $${commissionAmount.toFixed(2)}`)
+
+      } catch (error) {
+        console.error(`Error processing referral commission for level ${level}:`, error)
+      }
+    }
+
+    return {
+      processed: true,
+      commissionsGenerated: commissionResults.length,
+      results: commissionResults
+    }
+  }
+
+  // Process Trade Commission with extended levels
+  async processTradeCommissionExtended(trade) {
+    console.log(`Processing Extended Trade Commission for trade ${trade.tradeId || trade._id}`)
+    
+    const ibChain = await this.getIBChainExtended(trade.userId)
+    
+    if (ibChain.length === 0) {
+      return { processed: false, reason: 'No IB chain found for trader' }
+    }
+
+    const commissionResults = []
+    const contractSize = this.getContractSize(trade.symbol)
+
+    for (const { ibUser, level, ibLevel } of ibChain) {
+      try {
+        const levelConfig = ibLevel || await IBLevel.findById(ibUser.ibLevelId)
+        if (!levelConfig) continue
+
+        if (level > (levelConfig.maxDownlineLevels || 5)) continue
+
+        // Find trade commission for this level
+        const commissionConfig = levelConfig.tradeCommission?.find(c => c.level === level)
+        
+        // Fallback to legacy downlineCommission if new config not available
+        let rate = 0
+        let commissionType = 'PER_LOT'
+        
+        if (commissionConfig && commissionConfig.amount > 0) {
+          rate = commissionConfig.amount
+          commissionType = commissionConfig.type
+        } else if (levelConfig.downlineCommission && levelConfig.downlineCommission[`level${level}`]) {
+          rate = levelConfig.downlineCommission[`level${level}`]
+        }
+
+        if (rate <= 0) continue
+
+        // Calculate commission
+        let commissionAmount = 0
+        if (commissionType === 'PER_LOT') {
+          commissionAmount = trade.quantity * rate
+        } else if (commissionType === 'PERCENT') {
+          const tradeValue = trade.quantity * contractSize * (trade.openPrice || 0)
+          commissionAmount = tradeValue * (rate / 100)
+        }
+
+        if (commissionAmount <= 0) continue
+
+        // Check for duplicate
+        const existingCommission = await IBCommission.findOne({
+          tradeId: trade._id,
+          ibUserId: ibUser._id,
+          level
+        })
+        
+        if (existingCommission) continue
+
+        // Create commission record
+        const commission = await IBCommission.create({
+          tradeId: trade._id,
+          traderUserId: trade.userId,
+          ibUserId: ibUser._id,
+          level,
+          baseAmount: trade.quantity,
+          commissionAmount,
+          symbol: trade.symbol,
+          tradeLotSize: trade.quantity,
+          contractSize,
+          commissionType: 'TRADE',
+          status: 'CREDITED'
+        })
+
+        // Credit IB wallet
+        const wallet = await IBWallet.getOrCreateWallet(ibUser._id)
+        await wallet.creditCommission(commissionAmount)
+
+        commissionResults.push({
+          ibUserId: ibUser._id,
+          ibName: ibUser.firstName,
+          level,
+          commissionAmount,
+          type: 'TRADE'
+        })
+
+        console.log(`Trade Commission: Level ${level} IB ${ibUser.firstName} earned $${commissionAmount.toFixed(2)}`)
+
+      } catch (error) {
+        console.error(`Error processing trade commission for level ${level}:`, error)
+      }
+    }
+
+    return {
+      processed: true,
+      commissionsGenerated: commissionResults.length,
+      results: commissionResults
+    }
   }
 }
 

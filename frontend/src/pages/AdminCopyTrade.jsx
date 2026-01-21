@@ -24,6 +24,8 @@ const AdminCopyTrade = () => {
   const [masters, setMasters] = useState([])
   const [applications, setApplications] = useState([])
   const [followers, setFollowers] = useState([])
+  const [commissions, setCommissions] = useState([])
+  const [commissionTotals, setCommissionTotals] = useState(null)
   const [dashboard, setDashboard] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedMaster, setSelectedMaster] = useState(null)
@@ -40,6 +42,7 @@ const AdminCopyTrade = () => {
     fetchMasters()
     fetchApplications()
     fetchFollowers()
+    fetchCommissions()
   }, [])
 
   const fetchDashboard = async () => {
@@ -80,6 +83,17 @@ const AdminCopyTrade = () => {
       setFollowers(data.followers || [])
     } catch (error) {
       console.error('Error fetching followers:', error)
+    }
+  }
+
+  const fetchCommissions = async () => {
+    try {
+      const res = await fetch(`${API_URL}/copy/admin/commissions?limit=100`)
+      const data = await res.json()
+      setCommissions(data.commissions || [])
+      setCommissionTotals(data.totals)
+    } catch (error) {
+      console.error('Error fetching commissions:', error)
     }
   }
 
@@ -211,7 +225,8 @@ const AdminCopyTrade = () => {
         {[
           { key: 'applications', label: `Applications (${applications.length})` },
           { key: 'masters', label: 'All Masters' },
-          { key: 'followers', label: 'Followers' }
+          { key: 'followers', label: 'Followers' },
+          { key: 'commissions', label: 'Commissions' }
         ].map(tab => (
           <button
             key={tab.key}
@@ -368,6 +383,97 @@ const AdminCopyTrade = () => {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Commissions Tab */}
+      {activeTab === 'commissions' && (
+        <div>
+          {/* Commission Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+              <p className="text-gray-500 text-sm mb-1">Total Commission</p>
+              <p className="text-white text-2xl font-bold">${commissionTotals?.totalCommission?.toFixed(2) || '0.00'}</p>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+              <p className="text-gray-500 text-sm mb-1">Admin Share</p>
+              <p className="text-purple-400 text-2xl font-bold">${commissionTotals?.totalAdminShare?.toFixed(2) || '0.00'}</p>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+              <p className="text-gray-500 text-sm mb-1">Master Share</p>
+              <p className="text-green-400 text-2xl font-bold">${commissionTotals?.totalMasterShare?.toFixed(2) || '0.00'}</p>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+              <p className="text-gray-500 text-sm mb-1">Total Profit Generated</p>
+              <p className="text-blue-400 text-2xl font-bold">${commissionTotals?.totalDailyProfit?.toFixed(2) || '0.00'}</p>
+            </div>
+          </div>
+
+          {/* Commission Records */}
+          <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
+            <div className="p-4 border-b border-gray-800">
+              <h2 className="text-white font-semibold text-lg">Commission Records</h2>
+              <p className="text-gray-500 text-sm">Daily commission breakdown from copy trading</p>
+            </div>
+            {commissions.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No commission records yet</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-700">
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Date</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Master</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Follower</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Daily Profit</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Rate</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Total Commission</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Admin Share</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Master Share</th>
+                      <th className="text-left text-gray-500 text-sm py-3 px-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {commissions.map(comm => (
+                      <tr key={comm._id} className="border-b border-gray-800 hover:bg-dark-700/50">
+                        <td className="py-4 px-4 text-white text-sm">{comm.tradingDay}</td>
+                        <td className="py-4 px-4 text-white text-sm">{comm.masterId?.displayName || '-'}</td>
+                        <td className="py-4 px-4">
+                          <p className="text-white text-sm">{comm.followerUserId?.firstName || 'User'}</p>
+                          <p className="text-gray-500 text-xs">{comm.followerUserId?.email}</p>
+                        </td>
+                        <td className="py-4 px-4 text-green-400 font-medium">${comm.dailyProfit?.toFixed(2)}</td>
+                        <td className="py-4 px-4 text-gray-400">{comm.commissionPercentage}%</td>
+                        <td className="py-4 px-4 text-white font-medium">${comm.totalCommission?.toFixed(2)}</td>
+                        <td className="py-4 px-4 text-purple-400 font-medium">${comm.adminShare?.toFixed(2)}</td>
+                        <td className="py-4 px-4 text-green-400 font-medium">${comm.masterShare?.toFixed(2)}</td>
+                        <td className="py-4 px-4">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            comm.status === 'DEDUCTED' ? 'bg-green-500/20 text-green-500' :
+                            comm.status === 'SETTLED' ? 'bg-blue-500/20 text-blue-500' :
+                            comm.status === 'FAILED' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'
+                          }`}>
+                            {comm.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Commission Info */}
+          <div className="mt-6 bg-dark-800 rounded-xl p-5 border border-gray-800">
+            <h4 className="text-white font-semibold mb-3">Commission Split Logic</h4>
+            <ul className="text-gray-400 text-sm space-y-2">
+              <li>• User sees <span className="text-white">Total Commission %</span> = Master % + Admin %</li>
+              <li>• Example: Master sets 10%, Admin share is 30% → User pays ~14.3% total</li>
+              <li>• Commission is calculated daily from followers' profits only</li>
+              <li>• Admin share goes to Admin Pool, Master share to Master's pending balance</li>
+            </ul>
+          </div>
         </div>
       )}
 
