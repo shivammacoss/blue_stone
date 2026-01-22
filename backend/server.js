@@ -42,8 +42,10 @@ const httpServer = createServer(app)
 
 // CORS configuration
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+const TRADE_URL = process.env.TRADE_URL || 'http://localhost:5173'
+const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5173'
 const allowedOrigins = process.env.NODE_ENV === 'production' 
-  ? [FRONTEND_URL] 
+  ? [FRONTEND_URL, TRADE_URL, ADMIN_URL, 'https://profitvisionfx.com', 'https://trade.profitvisionfx.com', 'https://admin.profitvisionfx.com'] 
   : ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173']
 
 // Socket.IO for real-time updates
