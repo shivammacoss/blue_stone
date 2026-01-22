@@ -94,8 +94,7 @@ const masterTraderSchema = new mongoose.Schema({
   },
   // Admin actions
   approvedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: mongoose.Schema.Types.Mixed,
     default: null
   },
   approvedAt: {
@@ -103,8 +102,7 @@ const masterTraderSchema = new mongoose.Schema({
     default: null
   },
   rejectedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: mongoose.Schema.Types.Mixed,
     default: null
   },
   rejectedAt: {
