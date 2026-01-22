@@ -14,7 +14,7 @@ import {
   CheckCircle
 } from 'lucide-react'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 const AdminReferralPlans = () => {
   const [activeTab, setActiveTab] = useState('referral-income')

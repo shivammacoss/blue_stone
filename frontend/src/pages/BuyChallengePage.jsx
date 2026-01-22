@@ -5,7 +5,7 @@ import {
   Check, ChevronRight, Zap, Award, DollarSign, ArrowLeft, FileText, X
 } from 'lucide-react'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 export default function BuyChallengePage() {
   const navigate = useNavigate()

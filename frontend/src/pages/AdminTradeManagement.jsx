@@ -19,7 +19,7 @@ import metaApiService from '../services/metaApi'
 import binanceApiService from '../services/binanceApi'
 import priceStreamService from '../services/priceStream'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 const AdminTradeManagement = () => {
   const [searchTerm, setSearchTerm] = useState('')

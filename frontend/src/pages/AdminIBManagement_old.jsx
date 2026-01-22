@@ -23,7 +23,7 @@ import {
   Target
 } from 'lucide-react'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 const AdminIBManagement = () => {
   const [searchTerm, setSearchTerm] = useState('')
@@ -1574,7 +1574,7 @@ const IBDetailsModal = ({ ib, plans, ibCommission, setIbCommission, ibPlan, setI
               <button
                 onClick={async () => {
                   try {
-                    const res = await fetch(`http://localhost:5001/api/ib/admin/unblock/${ib._id}`, { method: 'PUT' })
+                    const res = await fetch(`' + API_URL + '/ib/admin/unblock/${ib._id}`, { method: 'PUT' })
                     const data = await res.json()
                     if (data.success) {
                       alert('IB unblocked!')
@@ -1593,7 +1593,7 @@ const IBDetailsModal = ({ ib, plans, ibCommission, setIbCommission, ibPlan, setI
                   const reason = prompt('Enter block reason:')
                   if (!reason) return
                   try {
-                    const res = await fetch(`http://localhost:5001/api/ib/admin/block/${ib._id}`, {
+                    const res = await fetch(`' + API_URL + '/ib/admin/block/${ib._id}`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ reason })

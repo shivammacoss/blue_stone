@@ -1,4 +1,5 @@
 // MetaAPI Service for real-time MT5 data streaming
+import { API_URL } from '../config/api'
 // Credentials from .env file (VITE_ prefix for Vite)
 const META_API_TOKEN = import.meta.env.VITE_META_API_TOKEN || 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJiYmRlZGVjYWJjMDAzOTczNTQ3ODk2Y2NlYjgyNzY2NSIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiXSwicmVzb3VyY2VzIjpbImFjY291bnQ6JFVTRVJfSUQkOjJkNjM4M2E1LWJiNjgtNGJhOS1hNDBmLTE4OTA5NGQ3YzE0ZiJdfSx7ImlkIjoibWV0YWFwaS1yZXN0LWFwaSIsIm1ldGhvZHMiOlsibWV0YWFwaS1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiYWNjb3VudDokVVNFUl9JRCQ6MmQ2MzgzYTUtYmI2OC00YmE5LWE0MGYtMTg5MDk0ZDdjMTRmIl19LHsiaWQiOiJtZXRhYXBpLXJwYy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyJhY2NvdW50OiRVU0VSX0lEJDoyZDYzODNhNS1iYjY4LTRiYTktYTQwZi0xODkwOTRkN2MxNGYiXX0seyJpZCI6Im1ldGFhcGktcmVhbC10aW1lLXN0cmVhbWluZy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyJhY2NvdW50OiRVU0VSX0lEJDoyZDYzODNhNS1iYjY4LTRiYTktYTQwZi0xODkwOTRkN2MxNGYiXX0seyJpZCI6Im1ldGFzdGF0cy1hcGkiLCJtZXRob2RzIjpbIm1ldGFzdGF0cy1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciJdLCJyZXNvdXJjZXMiOlsiYWNjb3VudDokVVNFUl9JRCQ6MmQ2MzgzYTUtYmI2OC00YmE5LWE0MGYtMTg5MDk0ZDdjMTRmIl19XSwiaWdub3JlUmF0ZUxpbWl0cyI6ZmFsc2UsInRva2VuSWQiOiIyMDIxMDIxMyIsImltcGVyc29uYXRlZCI6ZmFsc2UsInJlYWxVc2VySWQiOiJiYmRlZGVjYWJjMDAzOTczNTQ3ODk2Y2NlYjgyNzY2NSIsImlhdCI6MTc2Nzg2OTUyMywiZXhwIjoxNzc1NjQ1NTIzfQ.OKKP9THiaQN1GRbWEM2HaCRYkNeEyIwB63Jocxyuy-8jR0Gv2fQFncUnWAoVF7jBZRT3Eii4-HqcU7aXZGJZyFyRyekAROD4XEoWfvEDRHGuyi3Mzqt3II3apH-wlFIQDBaH4qtiCCHXPTw1-dDOSDrjcXzVhvx-1sU88Iq_0QBgz7MUJ7zKFWWzB3usBtbixcRHG6fhKFwLlKePry8BMbj9xrvySuyySj0wnl8Qw4Fgo9KYLc4UdliEhNAqN3MPumH4yccM-BZjrYWN_FMLZHCSfutjSSwjoQrwwOTyf8NsHnqJNXfcboV7IZkP5iGth6-hEMNb-UKmdsFZLQjenEI-Ql3xwo-i7luILfqErquc9ZIuhTZVLlAQPiyiiXDCwL6DlJRj625tiAJKgAKz65Bz8NiXZ0T37r9OCKcwK6Q7Rr8LK1bluHGBk3iewpJgpNzPa92GmjBhrbY5EaNfr8Os84zdLOGpww8nljfEqdy40boOl-2hZ8S9FpV6drnlSLD-aAhKbq3yIR9_S_tXqwstIl00_1JUKHpJHZn04zvIXtqYFGgiAxcY7AXKrk1Bty_xulnaiQ9dXuSj8boJJkeoaq6wwJGNe_aA-ytdQAKz6PSxtXRcQVB-PsKzhC8wKCBbxru9zCwDkSXJUPtEKN5c25eMvsTq5JNc5sgbrds'
 const META_API_ACCOUNT_ID = import.meta.env.VITE_META_API_ACCOUNT_ID || '5fa758ec-b241-4c97-81c4-9de3a3bc1f04'
@@ -65,7 +66,7 @@ class MetaApiService {
   async getSymbolPrice(symbol) {
     try {
       // Use backend proxy to avoid CORS issues
-      const response = await fetch(`http://localhost:5001/api/prices/${symbol}`)
+      const response = await fetch(`${API_URL}/prices/${symbol}`)
       
       if (!response.ok) throw new Error('Failed to fetch symbol price')
       const data = await response.json()
@@ -83,7 +84,7 @@ class MetaApiService {
   async getAllPrices(symbolList) {
     try {
       // Use backend batch endpoint to get all prices at once
-      const response = await fetch('http://localhost:5001/api/prices/batch', {
+      const response = await fetch(`${API_URL}/prices/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbols: symbolList })

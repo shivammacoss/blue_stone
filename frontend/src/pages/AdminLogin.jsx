@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { X, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import logo from '../assets/logo.png'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api'
+const API_URL = import.meta.env.VITE_API_URL || '' + API_URL + ''
 
 const AdminLogin = () => {
   const navigate = useNavigate()

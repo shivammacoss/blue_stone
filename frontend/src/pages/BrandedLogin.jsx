@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { X, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 const BrandedLogin = () => {
   const { slug } = useParams()

@@ -17,7 +17,7 @@ import {
   QrCode
 } from 'lucide-react'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 const AdminPaymentMethods = () => {
   const navigate = useNavigate()

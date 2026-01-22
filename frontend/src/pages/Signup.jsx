@@ -4,7 +4,7 @@ import { X, Mail, ChevronDown, Search, Eye, EyeOff } from 'lucide-react'
 import { signup } from '../api/auth'
 import logo from '../assets/logo.png'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 const countries = [
   { code: '+1', name: 'United States', flag: '🇺🇸' },

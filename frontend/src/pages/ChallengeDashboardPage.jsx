@@ -6,7 +6,7 @@ import {
   CheckCircle, AlertCircle, RefreshCw
 } from 'lucide-react'
 
-const API_URL = 'http://localhost:5001/api'
+import { API_URL } from '../config/api'
 
 export default function ChallengeDashboardPage() {
   const navigate = useNavigate()
