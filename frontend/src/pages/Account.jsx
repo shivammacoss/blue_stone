@@ -968,9 +968,9 @@ const Account = () => {
       {/* Create Account Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-2xl border max-h-[90vh] overflow-y-auto`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Open New Account</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Open New Account</h3>
               <button 
                 onClick={() => {
                   setShowCreateModal(false)
@@ -1123,9 +1123,9 @@ const Account = () => {
       {/* Change PIN Modal */}
       {showPinModal && selectedAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Change PIN</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Change PIN</h3>
               <button 
                 onClick={() => {
                   setShowPinModal(false)
@@ -1208,9 +1208,9 @@ const Account = () => {
       {/* Transfer Funds Modal (Main Wallet → Account Wallet) */}
       {showTransferModal && selectedAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Transfer to Account</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Transfer to Account</h3>
               <button 
                 onClick={() => {
                   setShowTransferModal(false)
@@ -1260,7 +1260,7 @@ const Account = () => {
                   }
                 }}
                 placeholder="Enter amount (e.g., 100.50)"
-                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-green"
+                className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-700 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-accent-green`}
               />
               <div className="flex justify-between mt-2">
                 <button 
@@ -1300,9 +1300,9 @@ const Account = () => {
       {/* Withdraw from Account Modal (Account Wallet → Main Wallet) */}
       {showWithdrawModal && selectedAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Withdraw to Main Wallet</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Withdraw to Main Wallet</h3>
               <button 
                 onClick={() => {
                   setShowWithdrawModal(false)
@@ -1345,7 +1345,7 @@ const Account = () => {
                   }
                 }}
                 placeholder="Enter amount (e.g., 100.50)"
-                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-green"
+                className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-700 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-accent-green`}
               />
               <div className="flex justify-between mt-2">
                 <button 
@@ -1385,9 +1385,9 @@ const Account = () => {
       {/* Account to Account Transfer Modal */}
       {showAccountTransferModal && selectedAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Transfer Between Accounts</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Transfer Between Accounts</h3>
               <button 
                 onClick={() => {
                   setShowAccountTransferModal(false)
@@ -1456,7 +1456,7 @@ const Account = () => {
                   setTransferAmount(value)
                 }}
                 placeholder="Enter amount"
-                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-700 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-blue-500`}
               />
               <button 
                 type="button"
@@ -1667,7 +1667,7 @@ const Account = () => {
       {/* Archive Confirmation Modal */}
       {showArchiveConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-sm border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-sm border`}>
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <X size={32} className="text-red-500" />
@@ -1699,7 +1699,7 @@ const Account = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-sm border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-sm border`}>
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <X size={32} className="text-red-500" />
