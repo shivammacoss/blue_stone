@@ -121,10 +121,6 @@ const BrandedSignup = () => {
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-l from-orange-500/20 via-purple-500/20 to-transparent rounded-full blur-3xl" />
       
       <div className="relative bg-dark-700 rounded-2xl p-8 w-full max-w-md border border-gray-800">
-        <button className="absolute top-4 right-4 w-8 h-8 bg-dark-600 rounded-full flex items-center justify-center hover:bg-dark-500 transition-colors">
-          <X size={16} className="text-gray-400" />
-        </button>
-
         {brandInfo?.brandName && (
           <div className="text-center mb-6">
             <h2 className="text-accent-green text-lg font-bold">{brandInfo.brandName}</h2>
