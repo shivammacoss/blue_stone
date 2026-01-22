@@ -616,9 +616,9 @@ const WalletPage = () => {
       {/* Deposit Modal */}
       {showDepositModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-xl p-4 sm:p-6 w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-4 sm:p-6 w-full max-w-lg border max-h-[90vh] overflow-y-auto`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Deposit Funds</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Deposit Funds</h3>
               <button 
                 onClick={() => {
                   setShowDepositModal(false)
@@ -635,18 +635,18 @@ const WalletPage = () => {
 
             {/* Currency Selection */}
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-2">Select Your Currency</label>
+              <label className="block text-gray-500 text-sm mb-2">Select Your Currency</label>
               <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-32 sm:max-h-40 overflow-y-auto p-1">
                 <button
                   onClick={() => setSelectedCurrency({ currency: 'USD', symbol: '$', rateToUSD: 1, markup: 0 })}
                   className={`p-2 rounded-lg border transition-colors flex flex-col items-center gap-0.5 ${
                     !selectedCurrency || selectedCurrency.currency === 'USD'
                       ? 'border-accent-green bg-accent-green/10'
-                      : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                      : isDarkMode ? 'border-gray-700 bg-dark-700 hover:border-gray-600' : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                   }`}
                 >
                   <span className="text-lg">$</span>
-                  <span className="text-white text-[10px]">USD</span>
+                  <span className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-[10px]`}>USD</span>
                 </button>
                 {currencies.map((curr) => (
                   <button
@@ -655,11 +655,11 @@ const WalletPage = () => {
                     className={`p-2 rounded-lg border transition-colors flex flex-col items-center gap-0.5 ${
                       selectedCurrency?.currency === curr.currency
                         ? 'border-accent-green bg-accent-green/10'
-                        : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                        : isDarkMode ? 'border-gray-700 bg-dark-700 hover:border-gray-600' : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                     }`}
                   >
                     <span className="text-lg">{curr.symbol}</span>
-                    <span className="text-white text-[10px]">{curr.currency}</span>
+                    <span className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-[10px]`}>{curr.currency}</span>
                   </button>
                 ))}
               </div>
@@ -669,7 +669,7 @@ const WalletPage = () => {
             </div>
 
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-2">
+              <label className="block text-gray-500 text-sm mb-2">
                 Amount {selectedCurrency ? `(${selectedCurrency.symbol} ${selectedCurrency.currency})` : '($ USD)'}
               </label>
               <input
@@ -677,7 +677,7 @@ const WalletPage = () => {
                 value={localAmount}
                 onChange={(e) => setLocalAmount(e.target.value)}
                 placeholder={`Enter amount in ${selectedCurrency?.currency || 'USD'}`}
-                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-green"
+                className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-700 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-accent-green`}
               />
               {selectedCurrency && selectedCurrency.currency !== 'USD' && localAmount && parseFloat(localAmount) > 0 && (
                 <div className="mt-2 p-3 bg-accent-green/10 rounded-lg border border-accent-green/30">
@@ -693,7 +693,7 @@ const WalletPage = () => {
             </div>
 
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-2">Payment Method</label>
+              <label className="block text-gray-500 text-sm mb-2">Payment Method</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 {paymentMethods.map((method) => (
                   <button
@@ -702,11 +702,11 @@ const WalletPage = () => {
                     className={`p-4 rounded-lg border transition-colors flex flex-col items-center gap-2 ${
                       selectedPaymentMethod?._id === method._id
                         ? 'border-accent-green bg-accent-green/10'
-                        : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                        : isDarkMode ? 'border-gray-700 bg-dark-700 hover:border-gray-600' : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                     }`}
                   >
                     {getPaymentIcon(method.type)}
-                    <span className="text-white text-sm">{method.type}</span>
+                    <span className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm`}>{method.type}</span>
                   </button>
                 ))}
               </div>
@@ -716,17 +716,17 @@ const WalletPage = () => {
             </div>
 
             {selectedPaymentMethod && (
-              <div className="mb-4 p-4 bg-dark-700 rounded-lg">
+              <div className={`mb-4 p-4 ${isDarkMode ? 'bg-dark-700' : 'bg-gray-100'} rounded-lg`}>
                 {selectedPaymentMethod.type === 'Bank Transfer' && (
                   <div className="space-y-2 text-sm">
-                    <p className="text-gray-400">Bank: <span className="text-white">{selectedPaymentMethod.bankName}</span></p>
-                    <p className="text-gray-400">Account: <span className="text-white">{selectedPaymentMethod.accountNumber}</span></p>
-                    <p className="text-gray-400">Name: <span className="text-white">{selectedPaymentMethod.accountHolderName}</span></p>
-                    <p className="text-gray-400">IFSC: <span className="text-white">{selectedPaymentMethod.ifscCode}</span></p>
+                    <p className="text-gray-500">Bank: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>{selectedPaymentMethod.bankName}</span></p>
+                    <p className="text-gray-500">Account: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>{selectedPaymentMethod.accountNumber}</span></p>
+                    <p className="text-gray-500">Name: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>{selectedPaymentMethod.accountHolderName}</span></p>
+                    <p className="text-gray-500">IFSC: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>{selectedPaymentMethod.ifscCode}</span></p>
                   </div>
                 )}
                 {selectedPaymentMethod.type === 'UPI' && (
-                  <p className="text-gray-400">UPI ID: <span className="text-white">{selectedPaymentMethod.upiId}</span></p>
+                  <p className="text-gray-500">UPI ID: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>{selectedPaymentMethod.upiId}</span></p>
                 )}
                 {selectedPaymentMethod.type === 'QR Code' && selectedPaymentMethod.qrCodeImage && (
                   <img src={selectedPaymentMethod.qrCodeImage} alt="QR Code" className="mx-auto max-w-48" />
@@ -735,19 +735,19 @@ const WalletPage = () => {
             )}
 
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-2">Transaction Reference (Optional)</label>
+              <label className="block text-gray-500 text-sm mb-2">Transaction Reference (Optional)</label>
               <input
                 type="text"
                 value={transactionRef}
                 onChange={(e) => setTransactionRef(e.target.value)}
                 placeholder="Enter transaction ID or reference"
-                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-green"
+                className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-700 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-accent-green`}
               />
             </div>
 
             {/* Screenshot Upload */}
             <div className="mb-6">
-              <label className="block text-gray-400 text-sm mb-2">Payment Screenshot (Proof)</label>
+              <label className="block text-gray-500 text-sm mb-2">Payment Screenshot (Proof)</label>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -800,7 +800,7 @@ const WalletPage = () => {
                   setScreenshotPreview(null)
                   setError('')
                 }}
-                className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
+                className={`flex-1 ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} py-3 rounded-lg transition-colors`}
               >
                 Cancel
               </button>
@@ -825,9 +825,9 @@ const WalletPage = () => {
       {/* Withdraw Modal */}
       {showWithdrawModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-xl p-4 sm:p-6 w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-4 sm:p-6 w-full max-w-lg border max-h-[90vh] overflow-y-auto`}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">Withdraw Funds</h3>
+              <h3 className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-semibold text-lg`}>Withdraw Funds</h3>
               <button 
                 onClick={() => {
                   setShowWithdrawModal(false)
@@ -841,24 +841,24 @@ const WalletPage = () => {
               </button>
             </div>
 
-            <div className="mb-2 p-3 bg-dark-700 rounded-lg">
-              <p className="text-gray-400 text-sm">Available Balance</p>
-              <p className="text-white text-xl font-bold">${wallet?.balance?.toLocaleString() || '0.00'}</p>
+            <div className={`mb-2 p-3 ${isDarkMode ? 'bg-dark-700' : 'bg-gray-100'} rounded-lg`}>
+              <p className="text-gray-500 text-sm">Available Balance</p>
+              <p className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-xl font-bold`}>${wallet?.balance?.toLocaleString() || '0.00'}</p>
             </div>
 
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-2">Amount</label>
+              <label className="block text-gray-500 text-sm mb-2">Amount</label>
               <input
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="Enter amount"
-                className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-green"
+                className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-700 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-accent-green`}
               />
             </div>
 
             <div className="mb-6">
-              <label className="block text-gray-400 text-sm mb-2">Withdrawal Method</label>
+              <label className="block text-gray-500 text-sm mb-2">Withdrawal Method</label>
               <div className="grid grid-cols-3 gap-3">
                 {paymentMethods.map((method) => (
                   <button
@@ -867,11 +867,11 @@ const WalletPage = () => {
                     className={`p-4 rounded-lg border transition-colors flex flex-col items-center gap-2 ${
                       selectedPaymentMethod?._id === method._id
                         ? 'border-accent-green bg-accent-green/10'
-                        : 'border-gray-700 bg-dark-700 hover:border-gray-600'
+                        : isDarkMode ? 'border-gray-700 bg-dark-700 hover:border-gray-600' : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                     }`}
                   >
                     {getPaymentIcon(method.type)}
-                    <span className="text-white text-sm">{method.type}</span>
+                    <span className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm`}>{method.type}</span>
                   </button>
                 ))}
               </div>
@@ -887,7 +887,7 @@ const WalletPage = () => {
                   setSelectedPaymentMethod(null)
                   setError('')
                 }}
-                className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
+                className={`flex-1 ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} py-3 rounded-lg transition-colors`}
               >
                 Cancel
               </button>

@@ -990,21 +990,21 @@ const CopyTradePage = () => {
       {/* Follow Modal */}
       {showFollowModal && selectedMaster && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-semibold text-white mb-4">Follow {selectedMaster.displayName}</h2>
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border max-h-[90vh] overflow-y-auto`}>
+            <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-4`}>Follow {selectedMaster.displayName}</h2>
             
             <div className="space-y-4">
               {/* Wallet Balance Display */}
-              <div className="bg-dark-700 rounded-lg p-4 border border-gray-600">
+              <div className={`${isDarkMode ? 'bg-dark-700 border-gray-600' : 'bg-gray-100 border-gray-300'} rounded-lg p-4 border`}>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-sm">Your Wallet Balance</span>
-                  <span className="text-white font-bold text-lg">${walletBalance.toFixed(2)}</span>
+                  <span className="text-gray-500 text-sm">Your Wallet Balance</span>
+                  <span className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-bold text-lg`}>${walletBalance.toFixed(2)}</span>
                 </div>
               </div>
 
               {/* Deposit Amount Input */}
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Deposit Amount *</label>
+                <label className="text-gray-500 text-sm mb-1 block">Deposit Amount *</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                   <input
@@ -1013,7 +1013,7 @@ const CopyTradePage = () => {
                     onChange={(e) => setDepositAmount(e.target.value)}
                     min={selectedMaster.minimumFollowerDeposit || 0}
                     placeholder={`Min: $${selectedMaster.minimumFollowerDeposit || 0}`}
-                    className="w-full pl-8 pr-4 py-3 bg-dark-700 border border-gray-600 rounded-lg text-white text-lg focus:outline-none focus:border-accent-green"
+                    className={`w-full pl-8 pr-4 py-3 ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg text-lg focus:outline-none focus:border-accent-green`}
                   />
                 </div>
                 <p className="text-gray-500 text-xs mt-1">
@@ -1028,7 +1028,7 @@ const CopyTradePage = () => {
 
               {/* Copy Mode */}
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Copy Mode</label>
+                <label className="text-gray-500 text-sm mb-1 block">Copy Mode</label>
                 <select
                   value={copyMode}
                   onChange={(e) => {
@@ -1037,7 +1037,7 @@ const CopyTradePage = () => {
                     else if (e.target.value === 'MULTIPLIER') setCopyValue('1')
                     else setCopyValue('10')
                   }}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 >
                   <option value="FIXED_LOT">Fixed Lot Size</option>
                   <option value="BALANCE_BASED">Balance Based (Proportional)</option>
@@ -1054,7 +1054,7 @@ const CopyTradePage = () => {
 
               {/* Copy Value */}
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">
+                <label className="text-gray-500 text-sm mb-1 block">
                   {copyMode === 'FIXED_LOT' ? 'Lot Size' : 
                    copyMode === 'MULTIPLIER' ? 'Multiplier Value' : 'Max Lot Size'}
                 </label>
@@ -1064,19 +1064,19 @@ const CopyTradePage = () => {
                   onChange={(e) => setCopyValue(e.target.value)}
                   min={copyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
                   step={copyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 />
               </div>
 
               {/* Commission Info */}
-              <div className="bg-dark-700 rounded-lg p-3">
-                <p className="text-gray-400 text-sm">Commission: <span className="text-white">{selectedMaster.totalCommissionPercentage || selectedMaster.approvedCommissionPercentage}%</span> of daily profit</p>
+              <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-100'} rounded-lg p-3`}>
+                <p className="text-gray-500 text-sm">Commission: <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>{selectedMaster.totalCommissionPercentage || selectedMaster.approvedCommissionPercentage}%</span> of daily profit</p>
               </div>
 
               {/* Info Box */}
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                <p className="text-blue-400 text-sm font-medium mb-2">How it works:</p>
-                <ul className="text-blue-400/80 text-xs space-y-1">
+                <p className="text-blue-500 text-sm font-medium mb-2">How it works:</p>
+                <ul className="text-blue-500/80 text-xs space-y-1">
                   <li>• A new Copy Trading account will be created for you</li>
                   <li>• Your deposit goes to Credit (non-withdrawable)</li>
                   <li>• Profits from copied trades go to Balance (withdrawable)</li>
@@ -1088,7 +1088,7 @@ const CopyTradePage = () => {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => { setShowFollowModal(false); setDepositAmount(''); }}
-                className="flex-1 bg-dark-700 text-white py-2 rounded-lg hover:bg-dark-600"
+                className={`flex-1 ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} py-2 rounded-lg`}
               >
                 Cancel
               </button>
@@ -1107,46 +1107,46 @@ const CopyTradePage = () => {
       {/* Master Application Modal */}
       {showMasterModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
                 <Crown size={20} className="text-yellow-500" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-white">Become a Master Trader</h2>
+                <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Become a Master Trader</h2>
                 <p className="text-gray-500 text-sm">Share your trades with followers</p>
               </div>
             </div>
             
             <div className="space-y-4">
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Display Name *</label>
+                <label className="text-gray-500 text-sm mb-1 block">Display Name *</label>
                 <input
                   type="text"
                   value={masterForm.displayName}
                   onChange={(e) => setMasterForm(prev => ({ ...prev, displayName: e.target.value }))}
                   placeholder="Your trading name"
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 />
               </div>
 
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Description</label>
+                <label className="text-gray-500 text-sm mb-1 block">Description</label>
                 <textarea
                   value={masterForm.description}
                   onChange={(e) => setMasterForm(prev => ({ ...prev, description: e.target.value }))}
                   placeholder="Tell followers about your trading strategy..."
                   rows={3}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white resize-none"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2 resize-none`}
                 />
               </div>
 
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Trading Account *</label>
+                <label className="text-gray-500 text-sm mb-1 block">Trading Account *</label>
                 <select
                   value={masterForm.tradingAccountId || (accounts.length > 0 ? accounts[0]._id : '')}
                   onChange={(e) => setMasterForm(prev => ({ ...prev, tradingAccountId: e.target.value }))}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 >
                   {accounts.length === 0 && <option value="">No accounts available</option>}
                   {accounts.map(acc => (
@@ -1157,33 +1157,33 @@ const CopyTradePage = () => {
               </div>
 
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Requested Commission (%)</label>
+                <label className="text-gray-500 text-sm mb-1 block">Requested Commission (%)</label>
                 <input
                   type="number"
                   value={masterForm.requestedCommissionPercentage}
                   onChange={(e) => setMasterForm(prev => ({ ...prev, requestedCommissionPercentage: parseFloat(e.target.value) || 0 }))}
                   min="0"
                   max="50"
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 />
                 <p className="text-gray-500 text-xs mt-1">Commission you'll earn from followers' daily profits (0-50%)</p>
               </div>
 
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Minimum Follower Deposit ($)</label>
+                <label className="text-gray-500 text-sm mb-1 block">Minimum Follower Deposit ($)</label>
                 <input
                   type="number"
                   value={masterForm.minimumFollowerDeposit}
                   onChange={(e) => setMasterForm(prev => ({ ...prev, minimumFollowerDeposit: parseFloat(e.target.value) || 0 }))}
                   min="0"
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 />
                 <p className="text-gray-500 text-xs mt-1">Minimum balance required for followers to copy you (0 = no minimum)</p>
               </div>
 
-              <div className="bg-dark-700 rounded-lg p-4 space-y-2">
-                <p className="text-white text-sm font-medium">Requirements:</p>
-                <ul className="text-gray-400 text-xs space-y-1">
+              <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-100'} rounded-lg p-4 space-y-2`}>
+                <p className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm font-medium`}>Requirements:</p>
+                <ul className="text-gray-500 text-xs space-y-1">
                   <li>• Minimum account balance may be required</li>
                   <li>• Trading history will be reviewed</li>
                   <li>• Admin approval is required</li>
@@ -1194,7 +1194,7 @@ const CopyTradePage = () => {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowMasterModal(false)}
-                className="flex-1 bg-dark-700 text-white py-2 rounded-lg hover:bg-dark-600"
+                className={`flex-1 ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} py-2 rounded-lg`}
               >
                 Cancel
               </button>
@@ -1213,17 +1213,17 @@ const CopyTradePage = () => {
       {/* Edit Subscription Modal */}
       {showEditModal && editingSubscription && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
-            <h2 className="text-xl font-semibold text-white mb-4">Edit Subscription</h2>
-            <p className="text-gray-400 text-sm mb-4">Following: {editingSubscription.masterId?.displayName}</p>
+          <div className={`${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl p-6 w-full max-w-md border`}>
+            <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'} mb-4`}>Edit Subscription</h2>
+            <p className="text-gray-500 text-sm mb-4">Following: {editingSubscription.masterId?.displayName}</p>
             
             <div className="space-y-4">
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Trading Account</label>
+                <label className="text-gray-500 text-sm mb-1 block">Trading Account</label>
                 <select
                   value={editAccount}
                   onChange={(e) => setEditAccount(e.target.value)}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 >
                   {accounts.map(acc => (
                     <option key={acc._id} value={acc._id}>{acc.accountId} - ${acc.balance?.toFixed(2)}</option>
@@ -1233,7 +1233,7 @@ const CopyTradePage = () => {
               </div>
 
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">Copy Mode</label>
+                <label className="text-gray-500 text-sm mb-1 block">Copy Mode</label>
                 <select
                   value={editCopyMode}
                   onChange={(e) => {
@@ -1242,7 +1242,7 @@ const CopyTradePage = () => {
                     else if (e.target.value === 'MULTIPLIER') setEditCopyValue('1')
                     else setEditCopyValue('10')
                   }}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 >
                   <option value="FIXED_LOT">Fixed Lot Size</option>
                   <option value="BALANCE_BASED">Balance Based (Proportional)</option>
@@ -1258,7 +1258,7 @@ const CopyTradePage = () => {
               </div>
 
               <div>
-                <label className="text-gray-400 text-sm mb-1 block">
+                <label className="text-gray-500 text-sm mb-1 block">
                   {editCopyMode === 'FIXED_LOT' ? 'Lot Size' : 
                    editCopyMode === 'MULTIPLIER' ? 'Multiplier Value' : 'Max Lot Size'}
                 </label>
@@ -1268,7 +1268,7 @@ const CopyTradePage = () => {
                   onChange={(e) => setEditCopyValue(e.target.value)}
                   min={editCopyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
                   step={editCopyMode === 'MULTIPLIER' ? '0.1' : '0.01'}
-                  className="w-full bg-dark-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
                 />
                 <p className="text-gray-500 text-xs mt-1">
                   {editCopyMode === 'FIXED_LOT' && 'Each copied trade will use this fixed lot size'}
@@ -1282,7 +1282,7 @@ const CopyTradePage = () => {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => { setShowEditModal(false); setEditingSubscription(null); }}
-                className="flex-1 bg-dark-700 text-white py-2 rounded-lg hover:bg-dark-600"
+                className={`flex-1 ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} py-2 rounded-lg`}
               >
                 Cancel
               </button>
