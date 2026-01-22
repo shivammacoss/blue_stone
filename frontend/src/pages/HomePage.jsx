@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   TrendingUp, 
@@ -20,6 +20,7 @@ import heroVideo from '../assets/hero-video.mp4'
 
 const HomePage = () => {
   const navigate = useNavigate()
+  const videoRef = useRef(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(true)
   const [isMuted, setIsMuted] = useState(true)
   const [scrollY, setScrollY] = useState(0)
@@ -29,6 +30,13 @@ const HomePage = () => {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !videoRef.current.muted
+      setIsMuted(videoRef.current.muted)
+    }
+  }
 
   const features = [
     {
@@ -128,9 +136,10 @@ const HomePage = () => {
         {/* Video Background */}
         <div className="absolute inset-0 z-0">
           <video
+            ref={videoRef}
             autoPlay
             loop
-            muted={isMuted}
+            muted
             playsInline
             className="w-full h-full object-cover min-h-screen"
             style={{ objectPosition: 'center center' }}
@@ -142,7 +151,7 @@ const HomePage = () => {
           
           {/* Audio Toggle Button */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={toggleMute}
             className="absolute bottom-8 right-8 z-20 bg-white/10 hover:bg-white/20 backdrop-blur-sm p-3 rounded-full border border-white/20 transition-all"
             title={isMuted ? 'Unmute' : 'Mute'}
           >
