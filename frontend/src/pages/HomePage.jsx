@@ -11,7 +11,9 @@ import {
   Play,
   CheckCircle,
   Star,
-  ChevronDown
+  ChevronDown,
+  Volume2,
+  VolumeX
 } from 'lucide-react'
 import logo from '../assets/logo.png'
 import heroVideo from '../assets/hero-video.mp4'
@@ -19,6 +21,7 @@ import heroVideo from '../assets/hero-video.mp4'
 const HomePage = () => {
   const navigate = useNavigate()
   const [isVideoPlaying, setIsVideoPlaying] = useState(true)
+  const [isMuted, setIsMuted] = useState(true)
   const [scrollY, setScrollY] = useState(0)
 
   useEffect(() => {
@@ -127,14 +130,28 @@ const HomePage = () => {
           <video
             autoPlay
             loop
-            muted
+            muted={isMuted}
             playsInline
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover min-h-screen"
+            style={{ objectPosition: 'center center' }}
           >
             <source src={heroVideo} type="video/mp4" />
           </video>
           {/* Overlay */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black" />
+          
+          {/* Audio Toggle Button */}
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="absolute bottom-8 right-8 z-20 bg-white/10 hover:bg-white/20 backdrop-blur-sm p-3 rounded-full border border-white/20 transition-all"
+            title={isMuted ? 'Unmute' : 'Mute'}
+          >
+            {isMuted ? (
+              <VolumeX className="w-6 h-6 text-white" />
+            ) : (
+              <Volume2 className="w-6 h-6 text-white" />
+            )}
+          </button>
         </div>
 
         {/* Hero Content */}
