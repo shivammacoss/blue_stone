@@ -38,7 +38,6 @@ import AdminEarnings from './pages/AdminEarnings'
 import ForgotPassword from './pages/ForgotPassword'
 import AdminThemeSettings from './pages/AdminThemeSettings'
 import AdminBookManagement from './pages/AdminBookManagement'
-import AdminEmail from './pages/AdminEmail'
 import BrandedLogin from './pages/BrandedLogin'
 import BrandedSignup from './pages/BrandedSignup'
 import ChatBot from './components/ChatBot'
@@ -85,7 +84,6 @@ function App() {
         <Route path="/admin/earnings" element={<AdminEarnings />} />
         <Route path="/admin/theme" element={<AdminThemeSettings />} />
         <Route path="/admin/book-management" element={<AdminBookManagement />} />
-        <Route path="/admin/email" element={<AdminEmail />} />
         <Route path="/buy-challenge" element={<BuyChallengePage />} />
         <Route path="/challenge-dashboard" element={<ChallengeDashboardPage />} />
         <Route path="/:slug/login" element={<BrandedLogin />} />

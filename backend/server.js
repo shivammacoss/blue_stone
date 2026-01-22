@@ -29,7 +29,6 @@ import notificationsRoutes from './routes/notifications.js'
 import bookManagementRoutes from './routes/bookManagement.js'
 import referralRoutes from './routes/referralRoutes.js'
 import superAdminRoutes from './routes/superAdmin.js'
-import emailRoutes from './routes/email.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -314,7 +313,6 @@ app.use('/api/notifications', notificationsRoutes)
 app.use('/api/book-management', bookManagementRoutes)
 app.use('/api/referral', referralRoutes)
 app.use('/api/super-admin', superAdminRoutes)
-app.use('/api/email', emailRoutes)
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))

@@ -2,7 +2,6 @@ import express from 'express'
 import jwt from 'jsonwebtoken'
 import User from '../models/User.js'
 import Admin from '../models/Admin.js'
-import { sendWelcomeEmail } from '../services/emailService.js'
 
 const router = express.Router()
 
@@ -69,9 +68,6 @@ router.post('/signup', async (req, res) => {
 
     // Generate token
     const token = generateToken(user._id)
-
-    // Send welcome email (non-blocking)
-    sendWelcomeEmail(user).catch(err => console.error('[Signup] Welcome email failed:', err))
 
     res.status(201).json({
       message: 'User registered successfully',
