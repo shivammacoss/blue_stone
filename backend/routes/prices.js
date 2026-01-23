@@ -2,9 +2,9 @@ import express from 'express'
 
 const router = express.Router()
 
-// MetaAPI credentials
-const META_API_TOKEN = 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJiYmRlZGVjYWJjMDAzOTczNTQ3ODk2Y2NlYjgyNzY2NSIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiXSwicmVzb3VyY2VzIjpbImFjY291bnQ6JFVTRVJfSUQkOjVmYTc1OGVjLWIyNDEtNGM5Ny04MWM0LTlkZTNhM2JjMWYwNCJdfSx7ImlkIjoibWV0YWFwaS1yZXN0LWFwaSIsIm1ldGhvZHMiOlsibWV0YWFwaS1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiYWNjb3VudDokVVNFUl9JRCQ6NWZhNzU4ZWMtYjI0MS00Yzk3LTgxYzQtOWRlM2EzYmMxZjA0Il19LHsiaWQiOiJtZXRhYXBpLXJwYy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyJhY2NvdW50OiRVU0VSX0lEJDo1ZmE3NThlYy1iMjQxLTRjOTctODFjNC05ZGUzYTNiYzFmMDQiXX0seyJpZCI6Im1ldGFhcGktcmVhbC10aW1lLXN0cmVhbWluZy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyJhY2NvdW50OiRVU0VSX0lEJDo1ZmE3NThlYy1iMjQxLTRjOTctODFjNC05ZGUzYTNiYzFmMDQiXX0seyJpZCI6Im1ldGFzdGF0cy1hcGkiLCJtZXRob2RzIjpbIm1ldGFzdGF0cy1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciJdLCJyZXNvdXJjZXMiOlsiYWNjb3VudDokVVNFUl9JRCQ6NWZhNzU4ZWMtYjI0MS00Yzk3LTgxYzQtOWRlM2EzYmMxZjA0Il19LHsiaWQiOiJyaXNrLW1hbmFnZW1lbnQtYXBpIiwibWV0aG9kcyI6WyJyaXNrLW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiXSwicmVzb3VyY2VzIjpbImFjY291bnQ6JFVTRVJfSUQkOjVmYTc1OGVjLWIyNDEtNGM5Ny04MWM0LTlkZTNhM2JjMWYwNCJdfV0sImlnbm9yZVJhdGVMaW1pdHMiOmZhbHNlLCJ0b2tlbklkIjoiMjAyMTAyMTMiLCJpbXBlcnNvbmF0ZWQiOmZhbHNlLCJyZWFsVXNlcklkIjoiYmJkZWRlY2FiYzAwMzk3MzU0Nzg5NmNjZWI4Mjc2NjUiLCJpYXQiOjE3NjgyMTgwNzEsImV4cCI6MTc3NTk5NDA3MX0.aVtRIUtO-0gl409_F32jCfGzrIgMmg8qktJhD-54dCVn_8sVzrILGL0_m4suMWbcaR2L4zTFvDTZUP8fthGm0zGCGCE8Ub7ITR_PE5xIF0g7ShaBwN5UeUBa5LWYRzidmUI76ebwP_lUoRFttEws1uh7LgyS_eCajuVW0rb7KxshyM6D2wK9Gh_Eov9TLe1KOZEwSlNK5IORrovmVEic1c6BAkLGwiloDUsvei1H27xj1ab-u80xBrkqckFzJ_09K7iRZVyH941ujySmFjsn-ptBBcjWw3vYBU-4GhBsmHEUImV-sUNInwOltsv3zjtFDa8_0FjpNbpgyPBCTRV6KsPLsAUYbELMnKy8cIgxSCnO1_7nzCWYdJ1dSa2fcpsGapzK4l04UEx7_qiaN6FJ0gi3GSSaFrZIbGuUGZTWeFCWiLQ8jayYqFsnqHz5vK32TqSgi4JpUhaWDDRcneUc4lzv_vVzLQ3wuPKC0TKnPLPVg0pgQS9tThPMhdkEQk8M3FZmiW-8VCCynGOmgM2Xquca3o3iGh6HXiJr3DHzq-1W050kf7Hl_2G7C-heOHFkOBKtB6h3q-ca8znHvq3LC5sRWf7cVjd8HaMMmG-iqxw4p4UkkZQFRC5sTWJSDEdPU_3WgsUDbJz1GdAsP1oOTtHwgQwEnxby9btczWjUBeA'
-const META_API_ACCOUNT_ID = '5fa758ec-b241-4c97-81c4-9de3a3bc1f04'
+// MetaAPI credentials from environment
+const META_API_TOKEN = process.env.META_API_TOKEN
+const META_API_ACCOUNT_ID = process.env.META_API_ACCOUNT_ID || '5fa758ec-b241-4c97-81c4-9de3a3bc1f04'
 
 // Binance symbol mapping for crypto
 const BINANCE_SYMBOLS = {
@@ -62,35 +62,98 @@ async function getTwelveDataPrice(symbol) {
   }
 }
 
-// Fetch price from MetaAPI (forex/metals) with fallback
-async function getMetaApiPrice(symbol) {
+// Fetch Gold/Silver prices from free API
+async function getMetalPrice(symbol) {
   try {
-    const response = await fetch(
-      `https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/${META_API_ACCOUNT_ID}/symbols/${symbol}/current-price`,
-      {
-        headers: {
-          'auth-token': META_API_TOKEN,
-          'Content-Type': 'application/json'
+    // Use free gold-api.io for metals
+    if (symbol === 'XAUUSD') {
+      const response = await fetch('https://api.gold-api.com/price/XAU')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.price) {
+          const price = parseFloat(data.price)
+          return { bid: price - 0.25, ask: price + 0.25 }
         }
       }
-    )
-    if (!response.ok) {
-      // Try fallback on rate limit or error
-      return await getTwelveDataPrice(symbol)
     }
-    const data = await response.json()
-    if (data.error) {
-      // Rate limited - use fallback
-      return await getTwelveDataPrice(symbol)
+    if (symbol === 'XAGUSD') {
+      const response = await fetch('https://api.gold-api.com/price/XAG')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.price) {
+          const price = parseFloat(data.price)
+          return { bid: price - 0.01, ask: price + 0.01 }
+        }
+      }
     }
-    if (data.bid) {
-      return { bid: data.bid, ask: data.ask || data.bid }
-    }
-    return await getTwelveDataPrice(symbol)
+    return null
   } catch (e) {
-    console.error(`MetaAPI error for ${symbol}:`, e.message)
-    return await getTwelveDataPrice(symbol)
+    return null
   }
+}
+
+// Fetch forex from free ExchangeRate API
+async function getExchangeRatePrice(symbol) {
+  try {
+    // Parse symbol like EURUSD -> EUR, USD
+    const base = symbol.substring(0, 3)
+    const quote = symbol.substring(3, 6)
+    
+    const response = await fetch(`https://open.er-api.com/v6/latest/${base}`)
+    if (!response.ok) return null
+    const data = await response.json()
+    
+    if (data.rates && data.rates[quote]) {
+      const price = data.rates[quote]
+      const spread = 0.0002
+      return { bid: price - spread/2, ask: price + spread/2 }
+    }
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+// Fetch price from MetaAPI (forex/metals) with multiple fallbacks
+async function getMetaApiPrice(symbol) {
+  // Try MetaAPI first if token is valid
+  if (META_API_TOKEN && !META_API_TOKEN.endsWith('.stub')) {
+    try {
+      const response = await fetch(
+        `https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/${META_API_ACCOUNT_ID}/symbols/${symbol}/current-price`,
+        {
+          headers: {
+            'auth-token': META_API_TOKEN,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        if (data.bid) {
+          return { bid: data.bid, ask: data.ask || data.bid }
+        }
+      }
+    } catch (e) {
+      // Silent fail, try fallbacks
+    }
+  }
+  
+  // Fallback 1: Metal prices for XAUUSD/XAGUSD
+  if (symbol === 'XAUUSD' || symbol === 'XAGUSD') {
+    const metalPrice = await getMetalPrice(symbol)
+    if (metalPrice) return metalPrice
+  }
+  
+  // Fallback 2: TwelveData
+  const tdPrice = await getTwelveDataPrice(symbol)
+  if (tdPrice) return tdPrice
+  
+  // Fallback 3: ExchangeRate API for forex
+  const erPrice = await getExchangeRatePrice(symbol)
+  if (erPrice) return erPrice
+  
+  return null
 }
 
 // Fetch price from Binance (crypto)

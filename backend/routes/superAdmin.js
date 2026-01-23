@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'pv1x$3cur3K3y!2026@Pr0f1tV1s10nFX#
 
 // Super Admin credentials from environment
 const SUPER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@profitvisionfx.com'
-const SUPER_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ProfitVision@2026!'
+const SUPER_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'
 
 // POST /api/super-admin/login - Super Admin Login
 router.post('/login', async (req, res) => {

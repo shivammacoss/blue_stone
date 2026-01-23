@@ -39,6 +39,7 @@ const TradingPage = () => {
   const [stopLoss, setStopLoss] = useState('')
   const [pendingOrderType, setPendingOrderType] = useState('BUY LIMIT')
   const [entryPrice, setEntryPrice] = useState('')
+  const [chartLayout, setChartLayout] = useState('single') // 'single' or 'multi'
   // Initialize with default instruments immediately - no loading state
   const [instruments, setInstruments] = useState([
     { symbol: 'EURUSD', bid: 0, ask: 0, spread: 0, change: 0, category: 'Forex', starred: true },
@@ -1232,7 +1233,7 @@ const TradingPage = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Instruments Panel */}
           {showInstruments && (
-            <div className={`${isMobile ? 'absolute inset-0 z-20' : 'w-[280px]'} border-r flex flex-col shrink-0 ${isDarkMode ? 'bg-[#0d0d0d] border-gray-800' : 'bg-white border-gray-200'}`}>
+            <div className={`${isMobile ? 'absolute inset-0 z-20' : 'w-[240px] lg:w-[280px]'} border-r flex flex-col shrink-0 ${isDarkMode ? 'bg-[#0d0d0d] border-gray-800' : 'bg-white border-gray-200'}`}>
               {/* Header */}
               <div className={`px-3 py-3 border-b flex items-center justify-between ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                 <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Instruments</span>
@@ -1301,13 +1302,13 @@ const TradingPage = () => {
                         <div className="text-green-500 text-[10px]">+{inst.change?.toFixed(2) || '0.00'}%</div>
                       </div>
                       <div className="flex-1" />
-                      <div className="text-right w-16">
-                        <div className="text-red-500 text-xs font-mono">
+                      <div className="text-right w-14 sm:w-16">
+                        <div className="text-red-500 text-[10px] sm:text-xs font-mono">
                           {inst.bid > 0 ? inst.bid.toFixed(inst.bid > 100 ? 2 : 5) : '...'}
                         </div>
-                        <div className="text-gray-600 text-[9px]">Bid</div>
+                        <div className={`text-[8px] sm:text-[9px] ${isDarkMode ? 'text-gray-600' : 'text-gray-500'}`}>Bid</div>
                       </div>
-                      <div className="bg-[#2a2a2a] px-1.5 py-0.5 rounded text-cyan-400 text-[10px] font-medium min-w-[28px] text-center mx-2">
+                      <div className="bg-white px-2 py-1 rounded-md text-blue-600 text-[10px] sm:text-xs font-bold min-w-[32px] sm:min-w-[38px] text-center mx-1 sm:mx-2 shadow-md border border-gray-200">
                         {/* Show admin-set spread if available, otherwise show market spread */}
                         {adminSpreads[inst.symbol]?.spread > 0 ? (
                           // Convert admin spread to pips for display
@@ -1321,11 +1322,11 @@ const TradingPage = () => {
                           (inst.spread * 10000).toFixed(1)
                         ) : '-'}
                       </div>
-                      <div className="text-right w-14">
-                        <div className="text-green-500 text-xs font-mono">
+                      <div className="text-right w-12 sm:w-14">
+                        <div className="text-green-500 text-[10px] sm:text-xs font-mono">
                           {inst.ask > 0 ? inst.ask.toFixed(inst.ask > 100 ? 2 : 5) : '...'}
                         </div>
-                        <div className="text-gray-600 text-[9px]">Ask</div>
+                        <div className={`text-[8px] sm:text-[9px] ${isDarkMode ? 'text-gray-600' : 'text-gray-500'}`}>Ask</div>
                       </div>
                     </button>
                   ))
@@ -1333,7 +1334,7 @@ const TradingPage = () => {
               </div>
               
               {/* Footer */}
-              <div className="px-3 py-2 border-t border-gray-800 flex items-center justify-between shrink-0">
+              <div className={`px-3 py-2 border-t flex items-center justify-between shrink-0 ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                 <span className="text-gray-500 text-xs">{filteredInstruments.length} instruments</span>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -1371,17 +1372,56 @@ const TradingPage = () => {
             <button className={`ml-1 p-1.5 rounded ${isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
               <Plus size={16} />
             </button>
+            {/* Multi-Chart Layout Toggle */}
+            <button 
+              onClick={() => setChartLayout(chartLayout === 'single' ? 'multi' : 'single')}
+              className={`ml-auto p-1.5 rounded flex items-center gap-1 ${
+                chartLayout === 'multi' 
+                  ? 'bg-blue-600 text-white' 
+                  : isDarkMode ? 'text-gray-500 hover:text-white hover:bg-[#1a1a1a]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              title={chartLayout === 'single' ? 'Switch to Multi-Chart View' : 'Switch to Single Chart'}
+            >
+              <LayoutGrid size={16} />
+              <span className="text-xs hidden sm:inline">{chartLayout === 'single' ? '4 Charts' : 'Single'}</span>
+            </button>
           </div>
 
-          {/* Chart - Always visible TradingView Advanced Chart with Side Toolbar */}
+          {/* Chart Area */}
           <div className={`flex-1 min-h-0 relative ${isDarkMode ? 'bg-[#0d0d0d]' : 'bg-white'}`}>
-            <iframe
-              key={`${selectedInstrument.symbol}-${isDarkMode}`}
-              src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=5&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=1&showpopupbutton=1&studies_overrides={}&overrides={}&enabled_features=["left_toolbar","header_widget"]&disabled_features=[]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=0`}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              allowFullScreen
-              title="TradingView Chart"
-            />
+            {chartLayout === 'single' ? (
+              /* Single Chart View */
+              <iframe
+                key={`${selectedInstrument.symbol}-${isDarkMode}`}
+                src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=5&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=1&showpopupbutton=1&studies_overrides={}&overrides={}&enabled_features=["left_toolbar","header_widget"]&disabled_features=[]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=0`}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                allowFullScreen
+                title="TradingView Chart"
+              />
+            ) : (
+              /* Multi-Chart View - 4 charts with different timeframes */
+              <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-0.5 bg-gray-800">
+                {[
+                  { interval: '1', label: '1 Min' },
+                  { interval: '5', label: '5 Min' },
+                  { interval: '15', label: '15 Min' },
+                  { interval: '60', label: '1 Hour' }
+                ].map((tf, index) => (
+                  <div key={tf.interval} className="relative">
+                    <div className={`absolute top-1 left-1 z-10 px-2 py-0.5 rounded text-[10px] font-bold ${isDarkMode ? 'bg-gray-900/80 text-white' : 'bg-white/80 text-gray-900'}`}>
+                      {tf.label}
+                    </div>
+                    <iframe
+                      key={`${selectedInstrument.symbol}-${tf.interval}-${isDarkMode}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart_${index}&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=${tf.interval}&hidesidetoolbar=1&hidetoptoolbar=1&symboledit=0&saveimage=0&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=0&showpopupbutton=0&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=["left_toolbar","header_widget"]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=1`}
+                      style={{ width: '100%', height: '100%', border: 'none' }}
+                      allowFullScreen
+                      title={`TradingView Chart ${tf.label}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Positions Panel */}
