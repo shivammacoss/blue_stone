@@ -486,7 +486,7 @@ const Dashboard = () => {
       >
         {/* Logo */}
         <div className="p-4 flex items-center justify-center shrink-0">
-          <img src={logo} alt="ProfitVisionFX" className="h-24 object-contain" />
+          <img src={logo} alt="BlueStone" className="h-24 object-contain" />
         </div>
 
         {/* Menu */}

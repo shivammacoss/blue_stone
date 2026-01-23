@@ -260,149 +260,134 @@ const AdminAccountTypes = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-dark-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-semibold text-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-800 rounded-xl p-4 sm:p-6 w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-dark-800 pb-2 -mt-1">
+              <h3 className="text-white font-semibold text-base sm:text-lg">
                 {editingType ? 'Edit Account Type' : 'Create Account Type'}
               </h3>
-              <button onClick={() => { setShowModal(false); resetForm(); }} className="text-gray-400 hover:text-white">
+              <button onClick={() => { setShowModal(false); resetForm(); }} className="text-gray-400 hover:text-white p-1">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-gray-400 text-sm mb-2">Account Name *</label>
+                <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Account Name *</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g., Standard, Premium, VIP"
-                  className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  className="w-full bg-dark-700 border border-gray-700 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
               </div>
-
-              <div>
-                <label className="block text-gray-400 text-sm mb-2">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Account type description"
-                  rows={2}
-                  className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-gray-400 text-sm mb-2">Min Deposit ($) *</label>
+                  <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Min Deposit ($) *</label>
                   <input
                     type="number"
                     value={formData.minDeposit}
                     onChange={(e) => setFormData({ ...formData, minDeposit: e.target.value })}
                     placeholder="100"
-                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-400 text-sm mb-2">Leverage *</label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-white">1:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formData.leverage.replace('1:', '')}
-                      onChange={(e) => setFormData({ ...formData, leverage: `1:${e.target.value}` })}
-                      placeholder="100"
-                      className="flex-1 bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
-                    />
-                  </div>
-                  <p className="text-gray-500 text-xs mt-1">Enter any leverage value (e.g., 100, 500, 1000, 2000)</p>
+                  <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Leverage *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.leverage.replace('1:', '')}
+                    onChange={(e) => setFormData({ ...formData, leverage: `1:${e.target.value}` })}
+                    placeholder="100"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-gray-500 text-[10px] sm:text-xs mt-1">e.g., 100, 500, 1000, 2000</p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-gray-400 text-sm mb-2">Exposure Limit ($)</label>
+                <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Exposure Limit ($)</label>
                 <input
                   type="number"
                   value={formData.exposureLimit}
                   onChange={(e) => setFormData({ ...formData, exposureLimit: e.target.value })}
                   placeholder="0 for unlimited"
-                  className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  className="w-full bg-dark-700 border border-gray-700 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               {/* Min Spread and Commission */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-gray-400 text-sm mb-2">Min Spread (pips)</label>
+                  <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Min Spread (pips)</label>
                   <input
                     type="number"
                     step="0.1"
                     value={formData.minSpread}
                     onChange={(e) => setFormData({ ...formData, minSpread: e.target.value })}
                     placeholder="0"
-                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-400 text-sm mb-2">Commission ($)</label>
+                  <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Commission ($)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.commission}
                     onChange={(e) => setFormData({ ...formData, commission: e.target.value })}
                     placeholder="0"
-                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                    className="w-full bg-dark-700 border border-gray-700 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
 
               {/* Demo Account Toggle */}
-              <div className="bg-dark-700 rounded-lg p-4 border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="text-white font-medium">Demo Account</label>
-                    <p className="text-gray-500 text-xs mt-1">Enable this for practice/demo accounts with virtual funds</p>
+              <div className="bg-dark-700 rounded-lg p-3 sm:p-4 border border-gray-700">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <label className="text-white font-medium text-sm sm:text-base">Demo Account</label>
+                    <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">Enable for practice accounts</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, isDemo: !formData.isDemo })}
-                    className={`w-12 h-6 rounded-full transition-colors ${formData.isDemo ? 'bg-yellow-500' : 'bg-gray-600'}`}
+                    className={`w-11 sm:w-12 h-6 rounded-full transition-colors flex-shrink-0 ${formData.isDemo ? 'bg-yellow-500' : 'bg-gray-600'}`}
                   >
-                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${formData.isDemo ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${formData.isDemo ? 'translate-x-5 sm:translate-x-6' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
                 
                 {formData.isDemo && (
-                  <div className="mt-4 pt-4 border-t border-gray-600">
-                    <label className="block text-gray-400 text-sm mb-2">Demo Balance ($)</label>
+                  <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-600">
+                    <label className="block text-gray-400 text-xs sm:text-sm mb-1.5 sm:mb-2">Demo Balance ($)</label>
                     <input
                       type="number"
                       value={formData.demoBalance}
                       onChange={(e) => setFormData({ ...formData, demoBalance: e.target.value })}
                       placeholder="10000"
-                      className="w-full bg-dark-600 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500"
+                      className="w-full bg-dark-600 border border-gray-600 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500"
                     />
-                    <p className="text-gray-500 text-xs mt-1">Virtual balance users will receive when opening this account type</p>
+                    <p className="text-gray-500 text-[10px] sm:text-xs mt-1">Virtual balance for this account type</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
+            {error && <p className="text-red-500 text-xs sm:text-sm mt-3 sm:mt-4">{error}</p>}
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-2 sm:gap-3 mt-4 sm:mt-6">
               <button
                 onClick={() => { setShowModal(false); resetForm(); }}
-                className="flex-1 bg-dark-700 text-white py-3 rounded-lg hover:bg-dark-600 transition-colors"
+                className="flex-1 bg-dark-700 text-white py-2.5 sm:py-3 rounded-lg hover:bg-dark-600 transition-colors text-sm sm:text-base"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
-                className="flex-1 bg-red-500 text-white font-medium py-3 rounded-lg hover:bg-red-600 transition-colors"
+                className="flex-1 bg-blue-500 text-white font-medium py-2.5 sm:py-3 rounded-lg hover:bg-blue-600 transition-colors text-sm sm:text-base"
               >
                 {editingType ? 'Update' : 'Create'}
               </button>

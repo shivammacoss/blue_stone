@@ -1408,9 +1408,6 @@ const TradingPage = () => {
                   { interval: '60', label: '1 Hour' }
                 ].map((tf, index) => (
                   <div key={tf.interval} className="relative">
-                    <div className={`absolute top-1 left-1 z-10 px-2 py-0.5 rounded text-[10px] font-bold ${isDarkMode ? 'bg-gray-900/80 text-white' : 'bg-white/80 text-gray-900'}`}>
-                      {tf.label}
-                    </div>
                     <iframe
                       key={`${selectedInstrument.symbol}-${tf.interval}-${isDarkMode}`}
                       src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart_${index}&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=${tf.interval}&hidesidetoolbar=1&hidetoptoolbar=1&symboledit=0&saveimage=0&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=0&showpopupbutton=0&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=["left_toolbar","header_widget"]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=1`}

@@ -153,7 +153,7 @@ router.post('/verify-otp', async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful! Welcome to ProfitVisionFX.',
+      message: 'Registration successful! Welcome to BlueStone.',
       user: {
         _id: user._id,
         id: user._id,

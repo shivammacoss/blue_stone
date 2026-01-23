@@ -574,7 +574,7 @@ const Account = () => {
           onMouseLeave={() => setSidebarExpanded(false)}
         >
           <div className="p-4 flex items-center justify-center shrink-0">
-            <img src={logo} alt="ProfitVisionFX" className="h-12 object-contain" />
+            <img src={logo} alt="BlueStone" className="h-12 object-contain" />
           </div>
 
           <nav className="flex-1 px-2 overflow-y-auto">

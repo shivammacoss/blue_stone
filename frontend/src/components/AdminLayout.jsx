@@ -101,8 +101,8 @@ const AdminLayout = ({ children, title, subtitle }) => {
         {/* Logo */}
         <div className={`p-4 flex items-center justify-between border-b ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
           <div className="flex items-center gap-2">
-            <img src={logo} alt="ProfitVisionFX" className="h-16 object-contain flex-shrink-0" />
-            {sidebarExpanded && <span className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Admin</span>}
+            <img src={logo} alt="BlueStone" className="h-16 object-contain flex-shrink-0" />
+            {sidebarExpanded} 
           </div>
           <button 
             onClick={() => setSidebarExpanded(!sidebarExpanded)}
