@@ -24,9 +24,9 @@ export const sendOTPEmail = async (email, otp, name) => {
     const transporter = createTransporter()
     
     const mailOptions = {
-      from: `"ProfitVisionFX" <${process.env.SMTP_USER}>`,
+      from: `"BlueStone" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: 'Verify Your Email - ProfitVisionFX',
+      subject: 'Verify Your Email - BlueStone',
       html: `
         <!DOCTYPE html>
         <html>
@@ -39,7 +39,7 @@ export const sendOTPEmail = async (email, otp, name) => {
             <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 40px; border: 1px solid #333;">
               <!-- Logo -->
               <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">ProfitVisionFX</h1>
+                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">BlueStone</h1>
               </div>
               
               <!-- Content -->
@@ -67,7 +67,7 @@ export const sendOTPEmail = async (email, otp, name) => {
               <!-- Footer -->
               <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #333;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                  © 2026 ProfitVisionFX. All rights reserved.
+                  © 2026 BlueStone. All rights reserved.
                 </p>
               </div>
             </div>
@@ -91,9 +91,9 @@ export const sendWelcomeEmail = async (email, name) => {
     const transporter = createTransporter()
     
     const mailOptions = {
-      from: `"ProfitVisionFX" <${process.env.SMTP_USER}>`,
+      from: `"BlueStone" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: 'Welcome to ProfitVisionFX! 🎉',
+      subject: 'Welcome to BlueStone! 🎉',
       html: `
         <!DOCTYPE html>
         <html>
@@ -106,7 +106,7 @@ export const sendWelcomeEmail = async (email, name) => {
             <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 40px; border: 1px solid #333;">
               <!-- Logo -->
               <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">ProfitVisionFX</h1>
+                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">BlueStone</h1>
               </div>
               
               <!-- Content -->
@@ -131,7 +131,7 @@ export const sendWelcomeEmail = async (email, name) => {
               
               <!-- CTA Button -->
               <div style="text-align: center; margin: 30px 0;">
-                <a href="https://trade.profitvisionfx.com/dashboard" 
+                <a href="https://trade.BlueStone.com/dashboard" 
                    style="display: inline-block; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #ffffff; text-decoration: none; padding: 15px 40px; border-radius: 8px; font-weight: bold; font-size: 16px;">
                   Start Trading Now
                 </a>
@@ -144,7 +144,7 @@ export const sendWelcomeEmail = async (email, name) => {
               <!-- Footer -->
               <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #333;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                  © 2026 ProfitVisionFX. All rights reserved.
+                  © 2026 BlueStone. All rights reserved.
                 </p>
               </div>
             </div>
@@ -168,7 +168,7 @@ export const sendAdminEmail = async (to, subject, htmlContent) => {
     const transporter = createTransporter()
     
     const mailOptions = {
-      from: `"ProfitVisionFX Admin" <${process.env.SMTP_USER}>`,
+      from: `"BlueStone Admin" <${process.env.SMTP_USER}>`,
       to: Array.isArray(to) ? to.join(', ') : to,
       subject: subject,
       html: `
@@ -183,7 +183,7 @@ export const sendAdminEmail = async (to, subject, htmlContent) => {
             <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 40px; border: 1px solid #333;">
               <!-- Logo -->
               <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">ProfitVisionFX</h1>
+                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">BlueStone</h1>
               </div>
               
               <!-- Content -->
@@ -194,7 +194,7 @@ export const sendAdminEmail = async (to, subject, htmlContent) => {
               <!-- Footer -->
               <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #333;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                  © 2026 ProfitVisionFX. All rights reserved.
+                  © 2026 BlueStone. All rights reserved.
                 </p>
               </div>
             </div>
@@ -216,12 +216,12 @@ export const sendAdminEmail = async (to, subject, htmlContent) => {
 export const sendPasswordResetEmail = async (email, resetToken, name) => {
   try {
     const transporter = createTransporter()
-    const resetLink = `${process.env.FRONTEND_URL || 'https://trade.profitvisionfx.com'}/user/reset-password?token=${resetToken}`
+    const resetLink = `${process.env.FRONTEND_URL || 'https://trade.BlueStone.com'}/user/reset-password?token=${resetToken}`
     
     const mailOptions = {
-      from: `"ProfitVisionFX" <${process.env.SMTP_USER}>`,
+      from: `"BlueStone" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: 'Reset Your Password - ProfitVisionFX',
+      subject: 'Reset Your Password - BlueStone',
       html: `
         <!DOCTYPE html>
         <html>
@@ -234,7 +234,7 @@ export const sendPasswordResetEmail = async (email, resetToken, name) => {
             <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 40px; border: 1px solid #333;">
               <!-- Logo -->
               <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">ProfitVisionFX</h1>
+                <h1 style="color: #ef4444; font-size: 28px; margin: 0;">BlueStone</h1>
               </div>
               
               <!-- Content -->
@@ -264,7 +264,7 @@ export const sendPasswordResetEmail = async (email, resetToken, name) => {
               <!-- Footer -->
               <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #333;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                  © 2026 ProfitVisionFX. All rights reserved.
+                  © 2026 BlueStone. All rights reserved.
                 </p>
               </div>
             </div>

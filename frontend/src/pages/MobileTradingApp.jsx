@@ -556,7 +556,7 @@ const MobileTradingApp = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <img src={logo} alt="ProfitVisionFX" className="h-24 object-contain" />
+          <img src={logo} alt="BlueStone" className="h-24 object-contain" />
           <div>
             <p className={`${colors.textMuted} text-xs`}>Welcome back,</p>
             <h1 className={`${colors.textPrimary} text-lg font-bold`}>{user?.firstName || 'Trader'}</h1>

@@ -127,7 +127,7 @@ const ChatBot = () => {
       const welcomeMessage = {
         id: Date.now(),
         type: 'bot',
-        text: `Hi ${user.name || 'there'}! 👋\n\nWelcome to ProfitVisionFX Support! I'm your virtual assistant and I'm here to help you navigate our trading platform.\n\nYou can ask me about:\n• Deposits & Withdrawals\n• Trading & Orders\n• Account Setup\n• Copy Trading\n• IB Program\n\nOr choose from the quick options below!`,
+        text: `Hi ${user.name || 'there'}! 👋\n\nWelcome to BlueStone Support! I'm your virtual assistant and I'm here to help you navigate our trading platform.\n\nYou can ask me about:\n• Deposits & Withdrawals\n• Trading & Orders\n• Account Setup\n• Copy Trading\n• IB Program\n\nOr choose from the quick options below!`,
         timestamp: new Date()
       }
       setMessages([welcomeMessage])
@@ -338,7 +338,7 @@ const ChatBot = () => {
               <Bot size={22} className="text-white" />
             </div>
             <div className="flex-1">
-              <h3 className="text-white font-semibold">ProfitVisionFX Support</h3>
+              <h3 className="text-white font-semibold">BlueStone Support</h3>
               <p className="text-white/80 text-xs flex items-center gap-1">
                 <span className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></span>
                 {waitingForHuman ? 'Waiting for human agent...' : 'Online - Ready to help'}

@@ -88,7 +88,7 @@ const HomePage = () => {
     {
       name: 'Rajesh Kumar',
       role: 'Professional Trader',
-      content: 'ProfitVisionFX has transformed my trading experience. The platform is incredibly fast and reliable.',
+      content: 'BlueStone has transformed my trading experience. The platform is incredibly fast and reliable.',
       rating: 5
     },
     {
@@ -112,7 +112,7 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             <div className="flex items-center gap-3">
-              <img src={logo} alt="ProfitVisionFX" className="h-12 object-contain" />
+              <img src={logo} alt="BlueStone" className="h-12 object-contain" />
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-gray-300 hover:text-white transition-colors">Features</a>
@@ -121,14 +121,14 @@ const HomePage = () => {
             </div>
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => window.location.href = 'https://trade.profitvisionfx.com/user/login'}
-                className="text-white hover:text-red-400 transition-colors font-medium"
+                onClick={() => window.location.href = 'http://localhost:5173/user/login'}
+                className="text-white hover:text-blue-400 transition-colors font-medium"
               >
                 Login
               </button>
               <button 
-                onClick={() => window.location.href = 'https://trade.profitvisionfx.com/user/signup'}
-                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-6 py-2.5 rounded-full font-medium transition-all transform hover:scale-105"
+                onClick={() => window.location.href = 'http://localhost:5173/user/signup'}
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-2.5 rounded-full font-medium transition-all transform hover:scale-105"
               >
                 Get Started
               </button>
@@ -178,33 +178,33 @@ const HomePage = () => {
         {/* Hero Content */}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center pt-20">
           <div className="animate-fade-in">
-            <div className="inline-flex items-center gap-2 bg-red-500/20 border border-red-500/30 rounded-full px-4 py-2 mb-6">
-              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-red-400 text-sm font-medium">Live Trading Platform</span>
+            <div className="inline-flex items-center gap-2 bg-blue-500/20 border border-blue-500/30 rounded-full px-4 py-2 mb-6">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              <span className="text-blue-400 text-sm font-medium">Live Trading Platform</span>
             </div>
             
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-              Trade Smarter with
-              <span className="block bg-gradient-to-r from-red-400 via-red-500 to-orange-500 bg-clip-text text-transparent">
-                ProfitVisionFX
+           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+              <span className="bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500 bg-clip-text text-transparent">Trade Smarter with</span>
+              <span className="block bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                BlueStone
               </span>
             </h1>
             
-            <p className="text-lg sm:text-xl text-gray-300 max-w-3xl mx-auto mb-8">
+            <p className="text-lg sm:text-xl text-white/50 max-w-3xl mx-auto mb-8">
               Experience the future of trading with our advanced platform. Trade forex, crypto, and commodities 
               with lightning-fast execution and industry-leading spreads.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
               <button 
-                onClick={() => window.location.href = 'https://trade.profitvisionfx.com/user/signup'}
-                className="group bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-8 py-4 rounded-full font-semibold text-lg transition-all transform hover:scale-105 flex items-center gap-2"
+                onClick={() => window.location.href = 'https://trade.BlueStone.com/user/signup'}
+                className="group bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-4 rounded-full font-semibold text-lg transition-all transform hover:scale-105 flex items-center gap-2"
               >
                 Start Trading Now
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
               <button 
-                onClick={() => window.location.href = 'https://trade.profitvisionfx.com/user/login'}
+                onClick={() => window.location.href = 'https://trade.BlueStone.com/user/login'}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-8 py-4 rounded-full font-semibold text-lg transition-all border border-white/20"
               >
                 Login to Account
@@ -234,7 +234,7 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Why Choose <span className="text-red-500">ProfitVisionFX</span>?
+              Why Choose <span className="text-blue-500">BlueStone</span>?
             </h2>
             <p className="text-gray-400 max-w-2xl mx-auto">
               We provide everything you need to succeed in the financial markets
@@ -245,9 +245,9 @@ const HomePage = () => {
             {features.map((feature, index) => (
               <div 
                 key={index}
-                className="group bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700/50 hover:border-red-500/50 transition-all duration-300 hover:transform hover:-translate-y-2"
+                className="group bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 hover:transform hover:-translate-y-2"
               >
-                <div className="w-14 h-14 bg-red-500/20 rounded-xl flex items-center justify-center text-red-500 mb-4 group-hover:bg-red-500 group-hover:text-white transition-all">
+                <div className="w-14 h-14 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-500 mb-4 group-hover:bg-blue-500 group-hover:text-white transition-all">
                   {feature.icon}
                 </div>
                 <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
@@ -260,15 +260,15 @@ const HomePage = () => {
 
       {/* Stats Section */}
       <section id="stats" className="py-20 bg-gray-900 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-orange-500/10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
               <h2 className="text-3xl sm:text-4xl font-bold mb-6">
-                Trusted by Traders <span className="text-red-500">Worldwide</span>
+                Trusted by Traders <span className="text-blue-500">Worldwide</span>
               </h2>
               <p className="text-gray-400 mb-8">
-                Join thousands of successful traders who have chosen ProfitVisionFX as their preferred trading platform. 
+                Join thousands of successful traders who have chosen BlueStone as their preferred trading platform. 
                 Our commitment to excellence and innovation sets us apart.
               </p>
               <ul className="space-y-4">
@@ -283,7 +283,7 @@ const HomePage = () => {
             <div className="grid grid-cols-2 gap-6">
               {stats.map((stat, index) => (
                 <div key={index} className="bg-black/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700 text-center">
-                  <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent">
+                  <div className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
                     {stat.value}
                   </div>
                   <div className="text-gray-400 mt-2">{stat.label}</div>
@@ -299,10 +299,10 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              What Our <span className="text-red-500">Traders</span> Say
+              What Our <span className="text-blue-500">Traders</span> Say
             </h2>
             <p className="text-gray-400 max-w-2xl mx-auto">
-              Real stories from real traders who have achieved success with ProfitVisionFX
+              Real stories from real traders who have achieved success with BlueStone
             </p>
           </div>
 
@@ -319,7 +319,7 @@ const HomePage = () => {
                 </div>
                 <p className="text-gray-300 mb-6 italic">"{testimonial.content}"</p>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-orange-500 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold">
                     {testimonial.name.charAt(0)}
                   </div>
                   <div>
@@ -334,25 +334,25 @@ const HomePage = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-red-600 to-orange-600 relative overflow-hidden">
+      <section className="py-20 bg-gradient-to-r from-blue-600 to-cyan-600 relative overflow-hidden">
         <div className="absolute inset-0 bg-black/20" />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <h2 className="text-3xl sm:text-4xl font-bold mb-6">
             Ready to Start Your Trading Journey?
           </h2>
           <p className="text-white/80 text-lg mb-8 max-w-2xl mx-auto">
-            Join ProfitVisionFX today and get access to world-class trading tools, 
+            Join BlueStone today and get access to world-class trading tools, 
             educational resources, and 24/7 support.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button 
-              onClick={() => window.location.href = 'https://trade.profitvisionfx.com/user/signup'}
-              className="bg-white text-red-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition-all transform hover:scale-105"
+              onClick={() => window.location.href = 'http://localhost:5173/user/signup'}
+              className="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition-all transform hover:scale-105"
             >
               Create Free Account
             </button>
             <button 
-              onClick={() => window.location.href = 'https://trade.profitvisionfx.com/user/login'}
+              onClick={() => window.location.href = 'http://localhost:5173/user/login'}
               className="bg-transparent border-2 border-white text-white px-8 py-4 rounded-full font-semibold text-lg hover:bg-white/10 transition-all"
             >
               Login
@@ -366,7 +366,7 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
-              <img src={logo} alt="ProfitVisionFX" className="h-10 object-contain mb-4" />
+              <img src={logo} alt="BlueStone" className="h-10 object-contain mb-4" />
               <p className="text-gray-400 text-sm">
                 Your trusted partner in forex and crypto trading. Trade with confidence.
               </p>
@@ -400,7 +400,7 @@ const HomePage = () => {
             </div>
           </div>
           <div className="border-t border-gray-800 pt-8 text-center text-gray-400 text-sm">
-            <p>© 2026 ProfitVisionFX. All rights reserved.</p>
+            <p>© 2026 BlueStone. All rights reserved.</p>
             <p className="mt-2 text-xs">
               Trading involves significant risk of loss. Past performance is not indicative of future results.
             </p>
