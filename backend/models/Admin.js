@@ -58,51 +58,52 @@ const adminSchema = new mongoose.Schema({
   },
   
   // Permissions - what features this admin can access/manage
+  // All defaults are FALSE - super admin must explicitly grant permissions
   permissions: {
     // User Management
-    canManageUsers: { type: Boolean, default: true },
-    canCreateUsers: { type: Boolean, default: true },
+    canManageUsers: { type: Boolean, default: false },
+    canCreateUsers: { type: Boolean, default: false },
     canDeleteUsers: { type: Boolean, default: false },
-    canViewUsers: { type: Boolean, default: true },
+    canViewUsers: { type: Boolean, default: false },
     
     // Trading Management
-    canManageTrades: { type: Boolean, default: true },
-    canCloseTrades: { type: Boolean, default: true },
+    canManageTrades: { type: Boolean, default: false },
+    canCloseTrades: { type: Boolean, default: false },
     canModifyTrades: { type: Boolean, default: false },
     
     // Account Management
-    canManageAccounts: { type: Boolean, default: true },
-    canCreateAccounts: { type: Boolean, default: true },
+    canManageAccounts: { type: Boolean, default: false },
+    canCreateAccounts: { type: Boolean, default: false },
     canDeleteAccounts: { type: Boolean, default: false },
-    canModifyLeverage: { type: Boolean, default: true },
+    canModifyLeverage: { type: Boolean, default: false },
     
     // Wallet/Finance
-    canManageDeposits: { type: Boolean, default: true },
-    canApproveDeposits: { type: Boolean, default: true },
-    canManageWithdrawals: { type: Boolean, default: true },
-    canApproveWithdrawals: { type: Boolean, default: true },
+    canManageDeposits: { type: Boolean, default: false },
+    canApproveDeposits: { type: Boolean, default: false },
+    canManageWithdrawals: { type: Boolean, default: false },
+    canApproveWithdrawals: { type: Boolean, default: false },
     
     // KYC
-    canManageKYC: { type: Boolean, default: true },
-    canApproveKYC: { type: Boolean, default: true },
+    canManageKYC: { type: Boolean, default: false },
+    canApproveKYC: { type: Boolean, default: false },
     
     // IB Management
-    canManageIB: { type: Boolean, default: true },
-    canApproveIB: { type: Boolean, default: true },
+    canManageIB: { type: Boolean, default: false },
+    canApproveIB: { type: Boolean, default: false },
     
     // Copy Trading
-    canManageCopyTrading: { type: Boolean, default: true },
-    canApproveMasters: { type: Boolean, default: true },
+    canManageCopyTrading: { type: Boolean, default: false },
+    canApproveMasters: { type: Boolean, default: false },
     
     // Settings
     canManageSymbols: { type: Boolean, default: false },
     canManageGroups: { type: Boolean, default: false },
     canManageSettings: { type: Boolean, default: false },
-    canManageTheme: { type: Boolean, default: true },
+    canManageTheme: { type: Boolean, default: false },
     
     // Reports
-    canViewReports: { type: Boolean, default: true },
-    canExportReports: { type: Boolean, default: true },
+    canViewReports: { type: Boolean, default: false },
+    canExportReports: { type: Boolean, default: false },
     
     // Admin Management (only for super admin)
     canManageAdmins: { type: Boolean, default: false },

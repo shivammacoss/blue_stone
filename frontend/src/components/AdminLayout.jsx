@@ -37,24 +37,44 @@ const AdminLayout = ({ children, title, subtitle }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [expandedSections, setExpandedSections] = useState({})
 
-  const menuItems = [
-    { name: 'Overview Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
-    { name: 'User Management', icon: Users, path: '/admin/users' },
-    { name: 'Trade Management', icon: TrendingUp, path: '/admin/trades' },
-    { name: 'Book Management', icon: BookOpen, path: '/admin/book-management' },
-    { name: 'Fund Management', icon: Wallet, path: '/admin/funds' },
-    { name: 'Bank Settings', icon: Building2, path: '/admin/bank-settings' },
-    { name: 'IB Management', icon: UserCog, path: '/admin/ib-management' },
-    { name: 'Forex Charges', icon: DollarSign, path: '/admin/forex-charges' },
-    { name: 'Earnings Report', icon: TrendingUp, path: '/admin/earnings' },
-    { name: 'Copy Trade Management', icon: Copy, path: '/admin/copy-trade' },
-    { name: 'Prop Firm Challenges', icon: Trophy, path: '/admin/prop-firm' },
-    { name: 'Account Types', icon: CreditCard, path: '/admin/account-types' },
-    { name: 'Theme Settings', icon: Palette, path: '/admin/theme' },
-    { name: 'Admin Management', icon: Shield, path: '/admin/admin-management' },
-    { name: 'KYC Verification', icon: FileCheck, path: '/admin/kyc' },
-    { name: 'Support Tickets', icon: HeadphonesIcon, path: '/admin/support' },
+  // Get admin user and permissions from localStorage
+  const adminUser = JSON.parse(localStorage.getItem('adminUser') || '{}')
+  const permissions = adminUser.permissions || {}
+  const isSuperAdmin = adminUser.role === 'SUPER_ADMIN' || adminUser._id === 'super-admin'
+
+  // Debug: Log permissions on mount
+  useEffect(() => {
+    console.log('Admin User:', adminUser)
+    console.log('Permissions:', permissions)
+    console.log('Is Super Admin:', isSuperAdmin)
+  }, [])
+
+  // All menu items with their required permissions
+  const allMenuItems = [
+    { name: 'Overview Dashboard', icon: LayoutDashboard, path: '/admin/dashboard', permission: null }, // Always visible
+    { name: 'User Management', icon: Users, path: '/admin/users', permission: 'canManageUsers' },
+    { name: 'Trade Management', icon: TrendingUp, path: '/admin/trades', permission: 'canManageTrades' },
+    { name: 'Book Management', icon: BookOpen, path: '/admin/book-management', permission: 'canManageTrades' },
+    { name: 'Fund Management', icon: Wallet, path: '/admin/funds', permission: 'canManageDeposits' },
+    { name: 'Bank Settings', icon: Building2, path: '/admin/bank-settings', permission: 'canManageSettings' },
+    { name: 'IB Management', icon: UserCog, path: '/admin/ib-management', permission: 'canManageIB' },
+    { name: 'Forex Charges', icon: DollarSign, path: '/admin/forex-charges', permission: 'canManageSettings' },
+    { name: 'Earnings Report', icon: TrendingUp, path: '/admin/earnings', permission: 'canViewReports' },
+    { name: 'Copy Trade Management', icon: Copy, path: '/admin/copy-trade', permission: 'canManageCopyTrading' },
+    { name: 'Prop Firm Challenges', icon: Trophy, path: '/admin/prop-firm', permission: 'canManageSettings' },
+    { name: 'Account Types', icon: CreditCard, path: '/admin/account-types', permission: 'canManageAccounts' },
+    { name: 'Theme Settings', icon: Palette, path: '/admin/theme', permission: 'canManageTheme' },
+    { name: 'Admin Management', icon: Shield, path: '/admin/admin-management', permission: 'canManageAdmins' },
+    { name: 'KYC Verification', icon: FileCheck, path: '/admin/kyc', permission: 'canManageKYC' },
+    { name: 'Support Tickets', icon: HeadphonesIcon, path: '/admin/support', permission: null }, // Always visible
   ]
+
+  // Filter menu items based on permissions (Super Admin sees all)
+  const menuItems = allMenuItems.filter(item => {
+    if (isSuperAdmin) return true // Super admin sees everything
+    if (item.permission === null) return true // Items with no permission requirement
+    return permissions[item.permission] === true
+  })
 
   useEffect(() => {
     const adminToken = localStorage.getItem('adminToken')
