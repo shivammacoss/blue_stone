@@ -121,13 +121,13 @@ const HomePage = () => {
             </div>
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => window.location.href = 'http://localhost:5173/user/login'}
+                onClick={() => window.location.href = '/user/login'}
                 className="text-white hover:text-blue-400 transition-colors font-medium"
               >
                 Login
               </button>
               <button 
-                onClick={() => window.location.href = 'http://localhost:5173/user/signup'}
+                onClick={() => window.location.href = '/user/signup'}
                 className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-2.5 rounded-full font-medium transition-all transform hover:scale-105"
               >
                 Get Started
@@ -346,13 +346,13 @@ const HomePage = () => {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button 
-              onClick={() => window.location.href = 'http://localhost:5173/user/signup'}
+              onClick={() => window.location.href = '/user/signup'}
               className="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition-all transform hover:scale-105"
             >
               Create Free Account
             </button>
             <button 
-              onClick={() => window.location.href = 'http://localhost:5173/user/login'}
+              onClick={() => window.location.href = '/user/login'}
               className="bg-transparent border-2 border-white text-white px-8 py-4 rounded-full font-semibold text-lg hover:bg-white/10 transition-all"
             >
               Login
