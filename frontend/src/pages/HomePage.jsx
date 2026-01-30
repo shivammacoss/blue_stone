@@ -124,7 +124,7 @@ const HomePage = () => {
                 onClick={() => window.location.href = '/user/login'}
                 className="text-white hover:text-blue-400 transition-colors font-medium"
               >
-                Sign In
+                Login
               </button>
               <button 
                 onClick={() => window.location.href = '/user/signup'}
