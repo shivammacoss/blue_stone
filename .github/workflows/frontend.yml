@@ -24,3 +24,7 @@ jobs:
           npm install
           npm run build
 
+      - name: Deploy to Production
+        run: |
+          sudo cp -r frontend/dist/* /var/www/bluestone/blue_stone/frontend/dist/
+
