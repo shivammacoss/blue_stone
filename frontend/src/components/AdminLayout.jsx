@@ -100,7 +100,7 @@ const AdminLayout = ({ children, title, subtitle }) => {
 
   return (
     <div className={`min-h-screen flex ${isDarkMode ? 'bg-dark-900' : 'bg-gray-50'}`}>
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Menu Overlay  responsive*/}
       {mobileMenuOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
