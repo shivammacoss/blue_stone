@@ -11,9 +11,7 @@ import {
   Play,
   CheckCircle,
   Star,
-  ChevronDown,
-  Volume2,
-  VolumeX
+  ChevronDown
 } from 'lucide-react'
 import logo from '../assets/logo.png'
 import heroVideo from '../assets/hero-video.mp4'
@@ -21,8 +19,6 @@ import heroVideo from '../assets/hero-video.mp4'
 const HomePage = () => {
   const navigate = useNavigate()
   const videoRef = useRef(null)
-  const [isVideoPlaying, setIsVideoPlaying] = useState(true)
-  const [isMuted, setIsMuted] = useState(true)
   const [scrollY, setScrollY] = useState(0)
 
   useEffect(() => {
@@ -30,19 +26,6 @@ const HomePage = () => {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      if (videoRef.current.muted) {
-        videoRef.current.muted = false
-        videoRef.current.volume = 1.0
-        setIsMuted(false)
-      } else {
-        videoRef.current.muted = true
-        setIsMuted(true)
-      }
-    }
-  }
 
   const features = [
     {
@@ -160,19 +143,6 @@ const HomePage = () => {
           </video>
           {/* Overlay */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black" />
-          
-          {/* Audio Toggle Button */}
-          <button
-            onClick={toggleMute}
-            className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8 z-20 bg-white/20 hover:bg-white/30 backdrop-blur-sm p-3 rounded-full border border-white/30 transition-all shadow-lg"
-            title={isMuted ? 'Click to Unmute' : 'Click to Mute'}
-          >
-            {isMuted ? (
-              <VolumeX className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            ) : (
-              <Volume2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            )}
-          </button>
         </div>
 
         {/* Hero Content */}

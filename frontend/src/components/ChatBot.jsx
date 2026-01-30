@@ -314,14 +314,14 @@ const ChatBot = () => {
         className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-50 ${
           isOpen 
             ? 'bg-red-500 hover:bg-red-600 rotate-0' 
-            : 'bg-accent-green hover:bg-green-600 animate-bounce'
+            : 'bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:from-blue-600 hover:via-purple-600 hover:to-pink-600 animate-bounce'
         }`}
         style={{ animationDuration: '2s' }}
       >
         {isOpen ? (
           <X size={24} className="text-white" />
         ) : (
-          <MessageCircle size={24} className="text-black" />
+          <MessageCircle size={24} className="text-white" />
         )}
       </button>
 
