@@ -59,7 +59,7 @@ const challengeSchema = new mongoose.Schema({
       default: null
     },
     
-    // Profit Rules
+    // Profit Rules Hari
     profitTargetPhase1Percent: {
       type: Number,
       default: 8
