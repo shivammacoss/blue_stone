@@ -311,7 +311,7 @@ const ChatBot = () => {
       {/* Chat Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-40 ${
+        className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-40 ${
           isOpen 
             ? 'bg-red-500 hover:bg-red-600 rotate-0' 
             : 'bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:from-blue-600 hover:via-purple-600 hover:to-pink-600 animate-bounce'
@@ -328,7 +328,7 @@ const ChatBot = () => {
       {/* Chat Window */}
       {isOpen && (
         <div 
-          className={`fixed bottom-24 right-6 w-96 h-[550px] rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40 transition-all duration-300 ${
+          className={`fixed bottom-20 right-4 sm:bottom-24 sm:right-6 w-[calc(100vw-2rem)] sm:w-80 md:w-96 h-[400px] sm:h-[450px] max-w-sm rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40 transition-all duration-300 ${
             isDarkMode ? 'bg-dark-800 border border-gray-700' : 'bg-white border border-gray-200'
           }`}
         >
