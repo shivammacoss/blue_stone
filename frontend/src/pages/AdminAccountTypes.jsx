@@ -59,18 +59,21 @@ const AdminAccountTypes = () => {
         ? `${API_URL}/account-types/${editingType._id}`
         : `${API_URL}/account-types`
       
+      const payload = {
+        ...formData,
+        minDeposit: parseFloat(formData.minDeposit),
+        exposureLimit: formData.exposureLimit ? parseFloat(formData.exposureLimit) : 0,
+        minSpread: parseFloat(formData.minSpread) || 0,
+        commission: parseFloat(formData.commission) || 0,
+        isDemo: formData.isDemo,
+        demoBalance: formData.isDemo ? parseFloat(formData.demoBalance) : 0
+      }
+      console.log('Saving account type with payload:', payload)
+      
       const res = await fetch(url, {
         method: editingType ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          minDeposit: parseFloat(formData.minDeposit),
-          exposureLimit: formData.exposureLimit ? parseFloat(formData.exposureLimit) : 0,
-          minSpread: parseFloat(formData.minSpread) || 0,
-          commission: parseFloat(formData.commission) || 0,
-          isDemo: formData.isDemo,
-          demoBalance: formData.isDemo ? parseFloat(formData.demoBalance) : 0
-        })
+        body: JSON.stringify(payload)
       })
       const data = await res.json()
       

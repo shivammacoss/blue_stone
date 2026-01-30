@@ -145,6 +145,15 @@ const TradingPage = () => {
     }
   }, [accountId])
 
+  // Fetch admin spreads when account is loaded (to use account type's minSpread)
+  useEffect(() => {
+    if (account?.accountTypeId) {
+      // Account has accountTypeId - fetch spreads with it
+      const accTypeId = typeof account.accountTypeId === 'object' ? account.accountTypeId._id : account.accountTypeId
+      fetchAdminSpreads(accTypeId)
+    }
+  }, [account?.accountTypeId])
+
   // Handle responsive layout
   useEffect(() => {
     const handleResize = () => {
@@ -454,10 +463,13 @@ const TradingPage = () => {
     return 'Forex'
   }
 
-  // Fetch admin-set spreads for instruments
-  const fetchAdminSpreads = async () => {
+  // Fetch admin-set spreads for instruments (uses account type's minSpread if available)
+  const fetchAdminSpreads = async (accTypeId = null) => {
     try {
-      const res = await fetch(`${API_URL}/charges/spreads`)
+      const url = accTypeId 
+        ? `${API_URL}/charges/spreads?accountTypeId=${accTypeId}`
+        : `${API_URL}/charges/spreads`
+      const res = await fetch(url)
       const data = await res.json()
       if (data.success) {
         setAdminSpreads(data.spreads || {})
@@ -1311,10 +1323,8 @@ const TradingPage = () => {
                       <div className="bg-white px-2 py-1 rounded-md text-blue-600 text-[10px] sm:text-xs font-bold min-w-[32px] sm:min-w-[38px] text-center mx-1 sm:mx-2 shadow-md border border-gray-200">
                         {/* Show admin-set spread if available, otherwise show market spread */}
                         {adminSpreads[inst.symbol]?.spread > 0 ? (
-                          // Convert admin spread to pips for display
-                          inst.symbol.includes('JPY') ? (adminSpreads[inst.symbol].spread * 100).toFixed(1) :
-                          inst.bid > 100 ? adminSpreads[inst.symbol].spread.toFixed(2) :
-                          (adminSpreads[inst.symbol].spread * 10000).toFixed(1)
+                          // Admin spread is already in pips, display directly
+                          adminSpreads[inst.symbol].spread.toFixed(1)
                         ) : inst.spread > 0 ? (
                           // Convert market spread to pips
                           inst.symbol.includes('JPY') ? (inst.spread * 100).toFixed(1) :

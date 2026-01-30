@@ -1,19 +1,41 @@
 import express from 'express'
 import Charges from '../models/Charges.js'
+import AccountType from '../models/AccountType.js'
 
 const router = express.Router()
 
 // GET /api/charges/spreads - Get spreads for all instruments (for display in trading UI)
+// If accountTypeId is provided, uses that account type's minSpread as default for all symbols
 router.get('/spreads', async (req, res) => {
   try {
     const { userId, accountTypeId } = req.query
     
-    // Get all charges that have spread values
-    const charges = await Charges.find({ isActive: true, spreadValue: { $gt: 0 } })
-      .sort({ level: 1 })
+    // All trading symbols
+    const allSymbolsList = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'NZDUSD', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'XAUUSD', 'XAGUSD', 'BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD', 'BNBUSD', 'SOLUSD', 'ADAUSD', 'DOGEUSD', 'DOTUSD', 'MATICUSD', 'AVAXUSD', 'LINKUSD']
     
     // Build a map of symbol -> spread (respecting hierarchy)
     const spreadMap = {}
+    
+    // STEP 1: If accountTypeId provided, get AccountType's minSpread as base for all symbols
+    let accountTypeSpread = 0
+    if (accountTypeId) {
+      const accountType = await AccountType.findById(accountTypeId)
+      if (accountType && accountType.minSpread > 0) {
+        accountTypeSpread = accountType.minSpread
+        // Apply account type's minSpread to all symbols as base (in pips, stored as-is)
+        for (const symbol of allSymbolsList) {
+          spreadMap[symbol] = {
+            spread: accountTypeSpread,
+            spreadType: 'FIXED',
+            level: 'ACCOUNT_TYPE'
+          }
+        }
+      }
+    }
+    
+    // STEP 2: Get all charges that have spread values (these can override AccountType spread)
+    const charges = await Charges.find({ isActive: true, spreadValue: { $gt: 0 } })
+      .sort({ level: 1 })
     
     // Priority order: USER > INSTRUMENT > ACCOUNT_TYPE > SEGMENT > GLOBAL
     const priorityOrder = { 'USER': 1, 'INSTRUMENT': 2, 'ACCOUNT_TYPE': 3, 'SEGMENT': 4, 'GLOBAL': 5 }

@@ -1065,7 +1065,7 @@ const Account = () => {
                           </div>
                           <div>
                             <p className="text-gray-500 text-xs">Min spread</p>
-                            <p className="text-white font-semibold">{type.spread || '2'} pips</p>
+                            <p className="text-white font-semibold">{type.minSpread || 0} pips</p>
                           </div>
                           <div>
                             <p className="text-gray-500 text-xs">Max leverage</p>
