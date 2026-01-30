@@ -21,6 +21,8 @@ jobs:
       - name: Install & Build Frontend
         run: |
           cd frontend
+          echo "VITE_API_URL=https://bluestoneexchange.com/api" > .env
+          echo "VITE_WS_URL=wss://bluestoneexchange.com" >> .env
           npm install
           npm run build
 
