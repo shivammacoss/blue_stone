@@ -24,5 +24,3 @@ jobs:
           npm install
           npm run build
 
-      - name: Restart Frontend
-        run: pm2 restart bluestone-frontend
