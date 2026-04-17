@@ -24,6 +24,16 @@ jobs:
             echo "No .env file to backup"
           fi
 
+      - name: Backup uploads folder
+        run: |
+          mkdir -p ~/uploads-backup
+          if [ -d ~/actions-runner/_work/blue_stone/blue_stone/backend/uploads ]; then
+            cp -r ~/actions-runner/_work/blue_stone/blue_stone/backend/uploads/* ~/uploads-backup/ 2>/dev/null || true
+            echo "Backed up uploads folder"
+          else
+            echo "No uploads folder to backup"
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -39,6 +49,20 @@ jobs:
               echo "Created .env from .env.example - PLEASE UPDATE WITH PRODUCTION VALUES"
             fi
           fi
+
+      - name: Restore uploads folder
+        run: |
+          mkdir -p ./backend/uploads/banners
+          mkdir -p ./backend/uploads/screenshots
+          mkdir -p ./backend/uploads/profiles
+          mkdir -p ./backend/uploads/kyc
+          if [ -d ~/uploads-backup ] && [ "$(ls -A ~/uploads-backup 2>/dev/null)" ]; then
+            cp -r ~/uploads-backup/* ./backend/uploads/ 2>/dev/null || true
+            echo "Restored uploads folder"
+          else
+            echo "No uploads backup found"
+          fi
+          ls -la ./backend/uploads/
 
       - name: Install backend dependencies
         working-directory: ./backend

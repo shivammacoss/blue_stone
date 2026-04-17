@@ -40,6 +40,16 @@ jobs:
           fi
           cat ./frontend/.env
 
+      - name: Copy TradingView Charting Library to public
+        working-directory: ./frontend
+        run: |
+          if [ -d "src/advance_chart/charting_library" ]; then
+            cp -r src/advance_chart/charting_library public/
+            echo "Copied charting_library to public folder"
+          else
+            echo "charting_library not found in src/advance_chart"
+          fi
+
       - name: Install frontend dependencies (only if package.json changed)
         working-directory: ./frontend
         run: |
