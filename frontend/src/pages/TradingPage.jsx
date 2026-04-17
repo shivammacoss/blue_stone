@@ -8,6 +8,7 @@ import priceStreamService from '../services/priceStream'
 import { useTheme } from '../context/ThemeContext'
 import { API_URL } from '../config/api'
 import toast from 'react-hot-toast'
+import TVChartContainer from '../components/TVChartContainer'
 
 const TradingPage = () => {
   const navigate = useNavigate()
@@ -97,6 +98,8 @@ const TradingPage = () => {
   const [historyFilter, setHistoryFilter] = useState('all') // all, today, week, month, year
   const [historyStartDate, setHistoryStartDate] = useState('')
   const [historyEndDate, setHistoryEndDate] = useState('')
+  const [historyPage, setHistoryPage] = useState(1)
+  const historyPerPage = 20
   
   // Deposit/Withdraw Modal states
   const [showDepositModal, setShowDepositModal] = useState(false)
@@ -933,11 +936,11 @@ const TradingPage = () => {
       const side = pendingOrderType.includes('BUY') ? 'BUY' : 'SELL'
       const orderType = pendingOrderType.replace(' ', '_')
 
-      // For pending orders, use entry price; fallback to live prices
-      const pendingPrice = entryPrice ? parseFloat(entryPrice) : null
+      // For pending orders, send actual market prices for validation + entryPrice for trigger
       const livePrice = livePrices[selectedInstrument.symbol]
       const currentBid = livePrice?.bid || selectedInstrument.bid
       const currentAsk = livePrice?.ask || selectedInstrument.ask
+      const pendingEntryPrice = entryPrice ? parseFloat(entryPrice) : null
       
       const res = await fetch(`${API_URL}/trade/open`, {
         method: 'POST',
@@ -950,8 +953,9 @@ const TradingPage = () => {
           side,
           orderType,
           quantity: parseFloat(volume),
-          bid: pendingPrice || currentBid,
-          ask: pendingPrice || currentAsk,
+          bid: currentBid,
+          ask: currentAsk,
+          entryPrice: pendingEntryPrice, // User's requested trigger price for pending orders
           sl: showStopLoss && stopLoss ? parseFloat(stopLoss) : null,
           tp: showTakeProfit && takeProfit ? parseFloat(takeProfit) : null
         })
@@ -1695,24 +1699,24 @@ const TradingPage = () => {
               /* 4 Charts Grid View */
               <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5">
                 {fourChartTimeframes.map((interval, index) => (
-                  <div key={`chart-${index}-${interval}`} className="relative">
-                    <iframe
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart_${index}&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=1&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=0&showpopupbutton=0&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=["left_toolbar","header_symbol_search","header_compare"]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=1&allow_symbol_change=0&details=0&calendar=0&hotlist=0`}
-                      style={{ width: '100%', height: '100%', border: 'none' }}
-                      allowFullScreen
-                      title={`TradingView Chart ${interval}`}
+                  <div key={`chart-${index}-${interval}`} className="relative w-full h-full">
+                    <TVChartContainer
+                      symbol={selectedInstrument.symbol}
+                      interval={interval}
+                      theme={isDarkMode ? 'dark' : 'light'}
+                      containerId={`tv_chart_${index}`}
                     />
                   </div>
                 ))}
               </div>
             ) : (
-              /* Single Chart View */
-              <iframe
-                key={`${selectedInstrument.symbol}-${isDarkMode}-${isMobile}`}
-                src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=${getSymbolForTradingView(selectedInstrument.symbol)}&interval=5&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=${isDarkMode ? '0d0d0d' : 'ffffff'}&studies=[]&theme=${isDarkMode ? 'dark' : 'light'}&style=1&timezone=Etc%2FUTC&withdateranges=1&showpopupbutton=1&studies_overrides={}&overrides={}&enabled_features=["left_toolbar","header_widget","drawing_templates"]&disabled_features=["hide_left_toolbar_by_default"]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=0&allow_symbol_change=1&details=1&calendar=0&hotlist=0`}
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                allowFullScreen
-                title="TradingView Chart"
+              /* Single Chart View - Advanced TradingView Chart */
+              <TVChartContainer
+                key={`${selectedInstrument.symbol}-${isDarkMode}`}
+                symbol={selectedInstrument.symbol}
+                interval="5"
+                theme={isDarkMode ? 'dark' : 'light'}
+                containerId="tv_chart_main"
               />
             )}
           </div>
@@ -1885,7 +1889,7 @@ const TradingPage = () => {
                   ].map(filter => (
                     <button
                       key={filter.key}
-                      onClick={() => { setHistoryFilter(filter.key); setHistoryStartDate(''); setHistoryEndDate('') }}
+                      onClick={() => { setHistoryFilter(filter.key); setHistoryStartDate(''); setHistoryEndDate(''); setHistoryPage(1) }}
                       className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                         historyFilter === filter.key && !historyStartDate
                           ? 'bg-green-500 text-black' 
@@ -1901,14 +1905,14 @@ const TradingPage = () => {
                     <input
                       type="date"
                       value={historyStartDate}
-                      onChange={(e) => setHistoryStartDate(e.target.value)}
+                      onChange={(e) => { setHistoryStartDate(e.target.value); setHistoryPage(1) }}
                       className={`px-2 py-1 rounded text-xs border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                     />
                     <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>to</span>
                     <input
                       type="date"
                       value={historyEndDate}
-                      onChange={(e) => setHistoryEndDate(e.target.value)}
+                      onChange={(e) => { setHistoryEndDate(e.target.value); setHistoryPage(1) }}
                       className={`px-2 py-1 rounded text-xs border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                     />
                   </div>
@@ -1948,7 +1952,7 @@ const TradingPage = () => {
                         <td colSpan="9" className="text-center py-8 text-gray-500">No trade history</td>
                       </tr>
                     ) : (
-                      getFilteredHistory().map(trade => {
+                      getFilteredHistory().slice((historyPage - 1) * historyPerPage, historyPage * historyPerPage).map(trade => {
                         const formatPrice = (price) => {
                           if (!price) return '-'
                           if (trade.symbol.includes('JPY')) return price.toFixed(3)
@@ -1976,6 +1980,31 @@ const TradingPage = () => {
                     )}
                   </tbody>
                 </table>
+
+                {/* Pagination */}
+                {getFilteredHistory().length > historyPerPage && (
+                  <div className={`flex items-center justify-between px-3 py-2 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+                    <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                      Page {historyPage} of {Math.ceil(getFilteredHistory().length / historyPerPage)} &nbsp;·&nbsp; {getFilteredHistory().length} trades
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                        disabled={historyPage === 1}
+                        className={`px-2 py-1 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed ${isDarkMode ? 'bg-[#1a1a1a] text-gray-300 hover:bg-[#252525]' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        ‹ Prev
+                      </button>
+                      <button
+                        onClick={() => setHistoryPage(p => Math.min(Math.ceil(getFilteredHistory().length / historyPerPage), p + 1))}
+                        disabled={historyPage === Math.ceil(getFilteredHistory().length / historyPerPage)}
+                        className={`px-2 py-1 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed ${isDarkMode ? 'bg-[#1a1a1a] text-gray-300 hover:bg-[#252525]' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        Next ›
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               )}
 

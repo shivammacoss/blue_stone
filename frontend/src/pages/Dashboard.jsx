@@ -609,7 +609,7 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="text-center mt-3">
-              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Forex Heatmap <span className="text-blue-500">by TradingView</span></span>
+              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Forex Heatmap <a href="https://www.tradingview.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400 hover:underline cursor-pointer">by TradingView</a></span>
             </div>
           </div>
 

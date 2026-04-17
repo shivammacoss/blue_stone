@@ -224,7 +224,7 @@ class TradeEngine {
   }
 
   // Open a new trade
-  async openTrade(userId, tradingAccountId, symbol, segment, side, orderType, quantity, bid, ask, sl = null, tp = null, userLeverage = null) {
+  async openTrade(userId, tradingAccountId, symbol, segment, side, orderType, quantity, bid, ask, sl = null, tp = null, userLeverage = null, entryPrice = null) {
     const account = await TradingAccount.findById(tradingAccountId).populate('accountTypeId')
     if (!account) throw new Error('Trading account not found')
 
@@ -327,7 +327,8 @@ class TradeEngine {
       swap: 0,
       floatingPnl: 0,
       status: orderType === 'MARKET' ? 'OPEN' : 'PENDING',
-      pendingPrice: orderType !== 'MARKET' ? openPrice : null
+      // For pending orders, use user's requested entry price (not spread-adjusted)
+      pendingPrice: orderType !== 'MARKET' ? (entryPrice || openPrice) : null
     })
 
     // Deduct commission from trading account balance when trade opens

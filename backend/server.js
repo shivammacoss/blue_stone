@@ -129,6 +129,26 @@ setInterval(async () => {
   } catch (error) {}
 }, 1000)
 
+// Background pending order check every 1 second
+setInterval(async () => {
+  try {
+    if (priceCache.size === 0) return
+    
+    const currentPrices = {}
+    priceCache.forEach((data, symbol) => {
+      currentPrices[symbol] = { bid: data.bid, ask: data.ask }
+    })
+    
+    const executedTrades = await tradeEngine.checkPendingOrders(currentPrices)
+    if (executedTrades.length > 0) {
+      console.log(`[PENDING] ${executedTrades.length} pending orders executed`)
+      executedTrades.forEach(et => {
+        console.log(`[PENDING] ${et.trade.orderType} ${et.trade.symbol} executed at ${et.executionPrice}`)
+      })
+    }
+  } catch (error) {}
+}, 1000)
+
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id)
 

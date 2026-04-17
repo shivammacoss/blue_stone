@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, ShoppingCart } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getFundingCartItemCount } from '../../../lib/fundingCart';
 
 interface NavigationProps {
   scrollY: number;
@@ -40,20 +39,8 @@ export default function Navigation({ scrollY }: NavigationProps) {
   const [isVisible, setIsVisible] = useState(true);
   const [isForexOpen, setIsForexOpen] = useState(false);
   const [isFundingOpen, setIsFundingOpen] = useState(false);
-  const [cartCount, setCartCount] = useState(() => getFundingCartItemCount());
 
   const isScrolled = scrollY > 50;
-
-  useEffect(() => {
-    const syncCart = () => setCartCount(getFundingCartItemCount());
-    syncCart();
-    window.addEventListener('funding-cart-updated', syncCart);
-    window.addEventListener('storage', syncCart);
-    return () => {
-      window.removeEventListener('funding-cart-updated', syncCart);
-      window.removeEventListener('storage', syncCart);
-    };
-  }, []);
 
   useEffect(() => {
     // Track scroll state for background styling
@@ -247,19 +234,6 @@ export default function Navigation({ scrollY }: NavigationProps) {
                 transition: 'opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.3s, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.3s',
               }}
             >
-              <button
-                type="button"
-                onClick={() => navigate('/cart')}
-                className="relative p-2 text-white/80 hover:text-white transition-colors duration-400"
-                aria-label="Cart"
-              >
-                <ShoppingCart size={22} />
-                {cartCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-cyan-500 text-[11px] font-bold text-white">
-                    {cartCount > 9 ? '9+' : cartCount}
-                  </span>
-                )}
-              </button>
               <button 
                 onClick={() => navigate('/user/login')}
                 className="text-sm font-medium text-white/80 hover:text-white transition-colors duration-400"
@@ -311,14 +285,6 @@ export default function Navigation({ scrollY }: NavigationProps) {
               </a>
             ))}
             <div className="pt-4 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={() => { setIsMenuOpen(false); navigate('/cart'); }}
-                className="w-full py-3 text-center text-white/80 border border-white/20 rounded-xl hover:bg-white/5 transition-colors duration-400 flex items-center justify-center gap-2"
-              >
-                <ShoppingCart size={20} />
-                Cart{cartCount > 0 ? ` (${cartCount})` : ''}
-              </button>
               <button 
                 onClick={() => { setIsMenuOpen(false); navigate('/user/login'); }}
                 className="w-full py-3 text-center text-white/80 border border-white/20 rounded-xl hover:bg-white/5 transition-colors duration-400"

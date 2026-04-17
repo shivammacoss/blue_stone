@@ -324,32 +324,32 @@ export default function IBProgramPage() {
                 ))}
               </div>
             </div>
-            <div className="bg-gradient-to-br from-gold/10 to-transparent rounded-3xl p-6 sm:p-8 border border-gold/20 min-h-[280px] flex items-center justify-center">
+            <div className="min-h-[280px] flex items-center justify-center">
               {ibBannerLoading ? (
                 <div className="w-full h-64 rounded-2xl bg-white/5 animate-pulse" aria-hidden />
               ) : partnerSpotlightBanner ? (
-                <div className="w-full">
+                <div className="w-full flex items-center justify-center">
                   {partnerSpotlightBanner.link ? (
                     <a
                       href={partnerSpotlightBanner.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-2xl overflow-hidden ring-1 ring-white/10 hover:ring-gold/40 transition-all"
+                      className="block"
                     >
                       <img
                         src={getPublicUploadUrl(partnerSpotlightBanner.imageUrl)}
                         alt={partnerSpotlightBanner.title || 'IB partner program'}
-                        className="w-full h-auto object-cover max-h-[420px] block"
+                        className="max-w-full h-auto object-contain max-h-[420px] block mx-auto"
                         loading="lazy"
                         decoding="async"
                       />
                     </a>
                   ) : (
-                    <div className="rounded-2xl overflow-hidden ring-1 ring-white/10">
+                    <div className="flex items-center justify-center">
                       <img
                         src={getPublicUploadUrl(partnerSpotlightBanner.imageUrl)}
                         alt={partnerSpotlightBanner.title || 'IB partner program'}
-                        className="w-full h-auto object-cover max-h-[420px] block"
+                        className="max-w-full h-auto object-contain max-h-[420px] block mx-auto"
                         loading="lazy"
                         decoding="async"
                       />

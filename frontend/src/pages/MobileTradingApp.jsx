@@ -10,6 +10,7 @@ import {
 import priceService from '../services/priceService'
 import priceStreamService from '../services/priceStream'
 import { API_URL } from '../config/api'
+import TVChartContainer from '../components/TVChartContainer'
 
 const MobileTradingApp = () => {
   const navigate = useNavigate()
@@ -25,6 +26,8 @@ const MobileTradingApp = () => {
   const [openTrades, setOpenTrades] = useState([])
   const [pendingOrders, setPendingOrders] = useState([])
   const [tradeHistory, setTradeHistory] = useState([])
+  const [historyPage, setHistoryPage] = useState(1)
+  const historyPerPage = 15
   const [instruments, setInstruments] = useState([])
   const [livePrices, setLivePrices] = useState({})
   const [loading, setLoading] = useState(true)
@@ -289,7 +292,7 @@ const MobileTradingApp = () => {
   const fetchTradeHistory = async () => {
     if (!selectedAccount) return
     try {
-      const res = await fetch(`${API_URL}/trade/history/${selectedAccount._id}?limit=50`)
+      const res = await fetch(`${API_URL}/trade/history/${selectedAccount._id}`)
       const data = await res.json()
       if (data.success) setTradeHistory(data.trades || [])
     } catch (e) {}
@@ -349,7 +352,7 @@ const MobileTradingApp = () => {
     try {
       const side = orderType === 'pending' ? (pendingOrderType.includes('BUY') ? 'BUY' : 'SELL') : orderSide
       const actualOrderType = orderType === 'market' ? 'MARKET' : pendingOrderType
-      const pendingPrice = orderType === 'pending' ? parseFloat(entryPrice) : null
+      const pendingEntryPrice = orderType === 'pending' ? parseFloat(entryPrice) : null
 
       const res = await fetch(`${API_URL}/trade/open`, {
         method: 'POST',
@@ -362,8 +365,9 @@ const MobileTradingApp = () => {
           side: side,
           orderType: actualOrderType,
           quantity: parseFloat(volume),
-          bid: pendingPrice || prices.bid,
-          ask: pendingPrice || prices.ask,
+          bid: prices.bid,
+          ask: prices.ask,
+          entryPrice: pendingEntryPrice, // User's requested trigger price for pending orders
           leverage: leverage,
           sl: stopLoss ? parseFloat(stopLoss) : null,
           tp: takeProfit ? parseFloat(takeProfit) : null
@@ -1084,31 +1088,56 @@ const MobileTradingApp = () => {
               <p>No trade history</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-800">
-              {tradeHistory.map(trade => (
-                <div key={trade._id} className="p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium">{trade.symbol}</span>
-                      <span className={`text-xs ${trade.side === 'BUY' ? 'text-green-500' : 'text-red-500'}`}>
-                        {trade.side}
-                      </span>
-                      {trade.closedBy === 'ADMIN' && (
-                        <span className="text-xs bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded">
-                          Admin Close
+            <div className="flex flex-col">
+              <div className="divide-y divide-gray-800">
+                {tradeHistory.slice((historyPage - 1) * historyPerPage, historyPage * historyPerPage).map(trade => (
+                  <div key={trade._id} className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">{trade.symbol}</span>
+                        <span className={`text-xs ${trade.side === 'BUY' ? 'text-green-500' : 'text-red-500'}`}>
+                          {trade.side}
                         </span>
-                      )}
+                        {trade.closedBy === 'ADMIN' && (
+                          <span className="text-xs bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded">
+                            Admin Close
+                          </span>
+                        )}
+                      </div>
+                      <span className={`font-semibold ${trade.realizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {trade.realizedPnl >= 0 ? '+' : ''}${trade.realizedPnl?.toFixed(2)}
+                      </span>
                     </div>
-                    <span className={`font-semibold ${trade.realizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {trade.realizedPnl >= 0 ? '+' : ''}${trade.realizedPnl?.toFixed(2)}
-                    </span>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>{trade.quantity} lots</span>
+                      <span>{new Date(trade.closedAt).toLocaleDateString()}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{trade.quantity} lots</span>
-                    <span>{new Date(trade.closedAt).toLocaleDateString()}</span>
+                ))}
+              </div>
+              {tradeHistory.length > historyPerPage && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800">
+                  <span className="text-xs text-gray-500">
+                    Page {historyPage} of {Math.ceil(tradeHistory.length / historyPerPage)}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                      disabled={historyPage === 1}
+                      className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      ‹ Prev
+                    </button>
+                    <button
+                      onClick={() => setHistoryPage(p => Math.min(Math.ceil(tradeHistory.length / historyPerPage), p + 1))}
+                      disabled={historyPage === Math.ceil(tradeHistory.length / historyPerPage)}
+                      className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next ›
+                    </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           )
         )}
@@ -1192,14 +1221,14 @@ const MobileTradingApp = () => {
         </button>
       </div>
 
-      {/* Full Screen TradingView Chart */}
+      {/* Full Screen TradingView Chart - Advanced Chart */}
       <div className="flex-1 bg-[#0d0d0d] relative min-h-0" ref={chartContainerRef}>
-        <iframe
+        <TVChartContainer
           key={activeChartTab}
-          src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_mobile&symbol=${getSymbolForTradingView(activeChartTab)}&interval=5&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=0d0d0d&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&showpopupbutton=1&studies_overrides={}&overrides={}&enabled_features=["left_toolbar","header_widget","drawing_templates"]&disabled_features=["hide_left_toolbar_by_default"]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&hide_side_toolbar=0`}
-          style={{ width: '100%', height: '100%', border: 'none' }}
-          allowFullScreen
-          title="TradingView Chart"
+          symbol={activeChartTab}
+          interval="5"
+          theme="dark"
+          containerId="tv_chart_mobile"
         />
       </div>
 

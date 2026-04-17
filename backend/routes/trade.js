@@ -50,7 +50,8 @@ router.post('/open', async (req, res) => {
       ask, 
       leverage,
       sl, 
-      tp 
+      tp,
+      entryPrice // For pending orders: user's requested trigger price
     } = req.body
 
     // Validate required fields
@@ -159,7 +160,8 @@ router.post('/open', async (req, res) => {
       parseFloat(ask),
       sl ? parseFloat(sl) : null,
       tp ? parseFloat(tp) : null,
-      leverage // Pass user-selected leverage
+      leverage, // Pass user-selected leverage
+      entryPrice ? parseFloat(entryPrice) : null // For pending orders
     )
 
     // Check if this is a master trader and copy to followers
@@ -450,15 +452,18 @@ router.get('/pending/:tradingAccountId', async (req, res) => {
 router.get('/history/:tradingAccountId', async (req, res) => {
   try {
     const { tradingAccountId } = req.params
-    const { limit = 50, offset = 0 } = req.query
+    const { limit = 0, offset = 0 } = req.query
 
-    const trades = await Trade.find({ 
+    const tradesQuery = Trade.find({ 
       tradingAccountId, 
       status: 'CLOSED' 
     })
       .sort({ closedAt: -1 })
       .skip(parseInt(offset))
-      .limit(parseInt(limit))
+
+    if (parseInt(limit) > 0) tradesQuery.limit(parseInt(limit))
+
+    const trades = await tradesQuery
 
     const total = await Trade.countDocuments({ 
       tradingAccountId, 
