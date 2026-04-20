@@ -919,6 +919,47 @@ const TradingPage = () => {
     }, 3000)
   }
 
+  // Get pending order price validation warning (real-time like MT5)
+  const getPendingOrderWarning = () => {
+    if (!entryPrice) return null
+    
+    const livePrice = livePrices[selectedInstrument?.symbol]
+    const currentBid = livePrice?.bid || selectedInstrument?.bid || 0
+    const currentAsk = livePrice?.ask || selectedInstrument?.ask || 0
+    const price = parseFloat(entryPrice)
+    
+    if (isNaN(price) || price <= 0) return null
+    if (currentBid === 0 || currentAsk === 0) return null
+    
+    const orderType = pendingOrderType.replace(' ', '_')
+    
+    switch (orderType) {
+      case 'BUY_LIMIT':
+        if (price >= currentAsk) {
+          return `Buy Limit must be below Ask (${currentAsk.toFixed(5)})`
+        }
+        break
+      case 'SELL_LIMIT':
+        if (price <= currentBid) {
+          return `Sell Limit must be above Bid (${currentBid.toFixed(5)})`
+        }
+        break
+      case 'BUY_STOP':
+        if (price <= currentAsk) {
+          return `Buy Stop must be above Ask (${currentAsk.toFixed(5)})`
+        }
+        break
+      case 'SELL_STOP':
+        if (price >= currentBid) {
+          return `Sell Stop must be below Bid (${currentBid.toFixed(5)})`
+        }
+        break
+    }
+    return null
+  }
+  
+  const pendingOrderWarning = getPendingOrderWarning()
+
   // Execute Pending Order
   const executePendingOrder = async () => {
     // Check Kill Switch
@@ -941,6 +982,39 @@ const TradingPage = () => {
       const currentBid = livePrice?.bid || selectedInstrument.bid
       const currentAsk = livePrice?.ask || selectedInstrument.ask
       const pendingEntryPrice = entryPrice ? parseFloat(entryPrice) : null
+
+      // Validate entry price is provided
+      if (!pendingEntryPrice) {
+        setTradeError('Please enter an entry price for pending order')
+        setIsExecutingTrade(false)
+        return
+      }
+
+      // Validate pending order entry price based on order type
+      // BUY_LIMIT: Entry must be BELOW current ask (buy cheaper)
+      // SELL_LIMIT: Entry must be ABOVE current bid (sell higher)
+      // BUY_STOP: Entry must be ABOVE current ask (breakout buy)
+      // SELL_STOP: Entry must be BELOW current bid (breakout sell)
+      if (orderType === 'BUY_LIMIT' && pendingEntryPrice >= currentAsk) {
+        setTradeError(`Buy Limit price must be below current Ask (${currentAsk.toFixed(5)})`)
+        setIsExecutingTrade(false)
+        return
+      }
+      if (orderType === 'SELL_LIMIT' && pendingEntryPrice <= currentBid) {
+        setTradeError(`Sell Limit price must be above current Bid (${currentBid.toFixed(5)})`)
+        setIsExecutingTrade(false)
+        return
+      }
+      if (orderType === 'BUY_STOP' && pendingEntryPrice <= currentAsk) {
+        setTradeError(`Buy Stop price must be above current Ask (${currentAsk.toFixed(5)})`)
+        setIsExecutingTrade(false)
+        return
+      }
+      if (orderType === 'SELL_STOP' && pendingEntryPrice >= currentBid) {
+        setTradeError(`Sell Stop price must be below current Bid (${currentBid.toFixed(5)})`)
+        setIsExecutingTrade(false)
+        return
+      }
       
       const res = await fetch(`${API_URL}/trade/open`, {
         method: 'POST',
@@ -2342,8 +2416,17 @@ const TradingPage = () => {
                       value={entryPrice}
                       onChange={(e) => setEntryPrice(e.target.value)}
                       placeholder="Enter price"
-                      className={`w-full rounded px-3 py-2.5 text-sm focus:outline-none border ${isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white focus:border-gray-600' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-gray-400'}`}
+                      className={`w-full rounded px-3 py-2.5 text-sm focus:outline-none border ${
+                        pendingOrderWarning 
+                          ? 'border-red-500 bg-red-500/10' 
+                          : isDarkMode ? 'bg-[#1a1a1a] border-gray-700 text-white focus:border-gray-600' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-gray-400'
+                      } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                     />
+                    {pendingOrderWarning && (
+                      <div className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <span>⚠</span> {pendingOrderWarning}
+                      </div>
+                    )}
                   </div>
 
                   {/* Order Volume */}
@@ -2461,10 +2544,14 @@ const TradingPage = () => {
                 <div className={`p-3 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
                   <button 
                     onClick={executePendingOrder}
-                    disabled={isExecutingTrade}
-                    className="w-full bg-blue-600/20 border border-blue-600 hover:bg-blue-600/30 text-blue-400 py-3 rounded font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isExecutingTrade || pendingOrderWarning}
+                    className={`w-full py-3 rounded font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      pendingOrderWarning 
+                        ? 'bg-gray-600/20 border border-gray-600 text-gray-400 cursor-not-allowed' 
+                        : 'bg-blue-600/20 border border-blue-600 hover:bg-blue-600/30 text-blue-400'
+                    }`}
                   >
-                    {isExecutingTrade ? 'Placing...' : `Place ${pendingOrderType}`}
+                    {isExecutingTrade ? 'Placing...' : pendingOrderWarning ? 'Invalid Price' : `Place ${pendingOrderType}`}
                   </button>
                   <div className="text-center text-gray-500 text-xs mt-2">
                     {volume} lots @ {entryPrice || '--.--'}

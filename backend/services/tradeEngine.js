@@ -303,6 +303,14 @@ class TradeEngine {
       }
     }
 
+    // Validate pending order entry price
+    if (orderType !== 'MARKET' && entryPrice) {
+      const pendingErrors = this.validatePendingOrderPrice(orderType, entryPrice, bid, ask)
+      if (pendingErrors.length > 0) {
+        throw new Error(pendingErrors.join('. '))
+      }
+    }
+
     // Generate trade ID
     const tradeId = await Trade.generateTradeId()
 
@@ -468,6 +476,40 @@ class TradeEngine {
       if (tp !== null && tp >= openPrice) {
         errors.push(`Take Profit (${tp}) must be below entry price (${openPrice}) for SELL trades`)
       }
+    }
+    
+    return errors
+  }
+
+  // Validate pending order entry price based on order type and current market price
+  // BUY_LIMIT: Entry price must be BELOW current ask (buy cheaper)
+  // SELL_LIMIT: Entry price must be ABOVE current bid (sell higher)
+  // BUY_STOP: Entry price must be ABOVE current ask (breakout buy)
+  // SELL_STOP: Entry price must be BELOW current bid (breakout sell)
+  validatePendingOrderPrice(orderType, entryPrice, bid, ask) {
+    const errors = []
+    
+    switch (orderType) {
+      case 'BUY_LIMIT':
+        if (entryPrice >= ask) {
+          errors.push(`Buy Limit entry price (${entryPrice}) must be below current Ask price (${ask})`)
+        }
+        break
+      case 'SELL_LIMIT':
+        if (entryPrice <= bid) {
+          errors.push(`Sell Limit entry price (${entryPrice}) must be above current Bid price (${bid})`)
+        }
+        break
+      case 'BUY_STOP':
+        if (entryPrice <= ask) {
+          errors.push(`Buy Stop entry price (${entryPrice}) must be above current Ask price (${ask})`)
+        }
+        break
+      case 'SELL_STOP':
+        if (entryPrice >= bid) {
+          errors.push(`Sell Stop entry price (${entryPrice}) must be below current Bid price (${bid})`)
+        }
+        break
     }
     
     return errors
