@@ -38,6 +38,18 @@ const ibPlanSchema = new mongoose.Schema({
     commission: { type: Boolean, default: true },
     swap: { type: Boolean, default: false }
   },
+  // Account type specific commission rates (overrides default if set)
+  accountTypeCommissions: [{
+    accountTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccountType' },
+    accountTypeName: { type: String },
+    levelCommissions: {
+      level1: { type: Number, default: 0 },
+      level2: { type: Number, default: 0 },
+      level3: { type: Number, default: 0 },
+      level4: { type: Number, default: 0 },
+      level5: { type: Number, default: 0 }
+    }
+  }],
   // Minimum requirements
   minWithdrawalAmount: {
     type: Number,

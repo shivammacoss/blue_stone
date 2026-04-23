@@ -39,6 +39,16 @@ const ibCommissionSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  // Account type info (for tracking commission by account type)
+  accountTypeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AccountType',
+    default: null
+  },
+  accountTypeName: {
+    type: String,
+    default: null
+  },
   // Commission calculation
   commissionType: {
     type: String,

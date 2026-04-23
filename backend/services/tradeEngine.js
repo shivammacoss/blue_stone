@@ -4,6 +4,7 @@ import Charges from '../models/Charges.js'
 import TradeSettings from '../models/TradeSettings.js'
 import AdminLog from '../models/AdminLog.js'
 import ibEngine from './ibEngineNew.js'
+import lpService from './lpService.js'
 
 class TradeEngine {
   constructor() {
@@ -346,6 +347,22 @@ class TradeEngine {
       await account.save()
     }
 
+    // Route trade based on A-Book/B-Book assignment
+    if (orderType === 'MARKET') {
+      try {
+        const routingResult = await lpService.routeTrade(trade, userId, tradingAccountId)
+        console.log(`[Trade Routing] ${routingResult.routedTo}: ${trade.symbol} ${trade.side} ${trade.quantity} lots - ${routingResult.message}`)
+        
+        // Store routing info in trade (optional - for tracking)
+        trade.bookType = routingResult.routedTo
+        trade.lpRouted = routingResult.lpConnected
+        await trade.save()
+      } catch (routingError) {
+        console.error('[Trade Routing] Error:', routingError)
+        // Don't fail the trade if routing fails - just log it
+      }
+    }
+
     return trade
   }
 
@@ -428,6 +445,14 @@ class TradeEngine {
         previousValue: { status: 'OPEN' },
         newValue: { status: 'CLOSED', realizedPnl }
       })
+    }
+
+    // Route trade close to LP if A-Book
+    try {
+      const closeRouting = await lpService.closeOnLP(trade)
+      console.log(`[Trade Close Routing] ${closeRouting.routedTo}: ${trade.symbol} closed - ${closeRouting.message}`)
+    } catch (routingError) {
+      console.error('[Trade Close Routing] Error:', routingError)
     }
 
     // Process IB commission for this trade

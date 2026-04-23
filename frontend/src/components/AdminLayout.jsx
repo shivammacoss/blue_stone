@@ -25,7 +25,8 @@ import {
   Mail,
   Gift,
   Image,
-  User
+  User,
+  BookOpen
 } from 'lucide-react'
 import logoImage from '../assets/logo.png'
 import { useLockDocumentScroll } from '../hooks/useLockDocumentScroll'
@@ -52,6 +53,7 @@ const AdminLayout = ({ children, title, subtitle }) => {
     { name: 'Overview Dashboard', icon: LayoutDashboard, path: '/admin/dashboard', sidebarKey: 'overviewDashboard' },
     { name: 'User Management', icon: Users, path: '/admin/users', sidebarKey: 'userManagement' },
     { name: 'Trade Management', icon: TrendingUp, path: '/admin/trades', sidebarKey: 'tradeManagement' },
+    { name: 'A-Book / B-Book', icon: BookOpen, path: '/admin/book-management', sidebarKey: 'bookManagement' },
     { name: 'Fund Management', icon: Wallet, path: '/admin/funds', sidebarKey: 'fundManagement' },
     { name: 'Crypto Settings', icon: Building2, path: '/admin/bank-settings', sidebarKey: 'bankSettings' },
     { name: 'IB Management', icon: UserCog, path: '/admin/ib-management', sidebarKey: 'ibManagement' },

@@ -58,6 +58,26 @@ const CopyTradePage = () => {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [withdrawing, setWithdrawing] = useState(false)
+  
+  // Master detail modal states
+  const [showMasterDetailModal, setShowMasterDetailModal] = useState(false)
+  const [selectedMasterDetail, setSelectedMasterDetail] = useState(null)
+  const [masterDetailStats, setMasterDetailStats] = useState(null)
+  const [masterTrades, setMasterTrades] = useState([])
+  const [masterRatings, setMasterRatings] = useState([])
+  const [loadingMasterDetail, setLoadingMasterDetail] = useState(false)
+  const [userRating, setUserRating] = useState(0)
+  const [userReview, setUserReview] = useState('')
+  const [submittingRating, setSubmittingRating] = useState(false)
+  
+  // Edit master profile states
+  const [showEditMasterModal, setShowEditMasterModal] = useState(false)
+  const [editMasterForm, setEditMasterForm] = useState({
+    displayName: '',
+    description: '',
+    commissionPercentage: 10
+  })
+  const [savingMasterProfile, setSavingMasterProfile] = useState(false)
 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -172,6 +192,124 @@ const CopyTradePage = () => {
       // User is not a master - that's okay
       console.log('No master profile found')
     }
+  }
+
+  // Fetch master detailed stats, trades, and ratings
+  const fetchMasterDetails = async (masterId) => {
+    setLoadingMasterDetail(true)
+    try {
+      const [statsRes, tradesRes, ratingsRes] = await Promise.all([
+        fetch(`${API_URL}/copy/master/${masterId}/detailed-stats`),
+        fetch(`${API_URL}/copy/master/${masterId}/trades?limit=20`),
+        fetch(`${API_URL}/copy/master/${masterId}/ratings?limit=10`)
+      ])
+      
+      const statsData = await statsRes.json()
+      const tradesData = await tradesRes.json()
+      const ratingsData = await ratingsRes.json()
+      
+      setMasterDetailStats(statsData)
+      setMasterTrades(tradesData.trades || [])
+      setMasterRatings(ratingsData.ratings || [])
+      
+      // Check if current user has already rated
+      const existingRating = ratingsData.ratings?.find(r => r.userId?._id === user._id)
+      if (existingRating) {
+        setUserRating(existingRating.rating)
+        setUserReview(existingRating.review || '')
+      } else {
+        setUserRating(0)
+        setUserReview('')
+      }
+    } catch (error) {
+      console.error('Error fetching master details:', error)
+      toast.error('Failed to load master details')
+    }
+    setLoadingMasterDetail(false)
+  }
+
+  const handleViewMasterDetail = (master) => {
+    setSelectedMasterDetail(master)
+    setShowMasterDetailModal(true)
+    fetchMasterDetails(master._id)
+  }
+
+  const handleSubmitRating = async () => {
+    if (!selectedMasterDetail || userRating === 0) {
+      toast.error('Please select a rating')
+      return
+    }
+    
+    setSubmittingRating(true)
+    try {
+      const res = await fetch(`${API_URL}/copy/master/${selectedMasterDetail._id}/rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          rating: userRating,
+          review: userReview
+        })
+      })
+      
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message || 'Rating submitted!')
+        fetchMasterDetails(selectedMasterDetail._id)
+        fetchMasters() // Refresh masters list
+      } else {
+        toast.error(data.message || 'Failed to submit rating')
+      }
+    } catch (error) {
+      toast.error('Error submitting rating')
+    }
+    setSubmittingRating(false)
+  }
+
+  // Open edit master modal with current values
+  const openEditMasterModal = () => {
+    if (myMasterProfile) {
+      setEditMasterForm({
+        displayName: myMasterProfile.displayName || '',
+        description: myMasterProfile.description || '',
+        commissionPercentage: myMasterProfile.approvedCommissionPercentage || myMasterProfile.requestedCommissionPercentage || 10
+      })
+      setShowEditMasterModal(true)
+    }
+  }
+
+  // Save master profile changes
+  const handleSaveMasterProfile = async () => {
+    if (!editMasterForm.displayName.trim()) {
+      toast.error('Display name is required')
+      return
+    }
+    
+    setSavingMasterProfile(true)
+    try {
+      const res = await fetch(`${API_URL}/copy/master/update-profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          masterId: myMasterProfile._id,
+          displayName: editMasterForm.displayName,
+          description: editMasterForm.description,
+          requestedCommissionPercentage: editMasterForm.commissionPercentage
+        })
+      })
+      
+      const data = await res.json()
+      if (res.ok) {
+        toast.success('Profile updated successfully!')
+        setShowEditMasterModal(false)
+        fetchMyMasterProfile() // Refresh master profile
+      } else {
+        toast.error(data.message || 'Failed to update profile')
+      }
+    } catch (error) {
+      toast.error('Error updating profile')
+    }
+    setSavingMasterProfile(false)
   }
 
   const handleApplyMaster = async () => {
@@ -517,7 +655,7 @@ const CopyTradePage = () => {
                   </div>
                 </div>
                 {myMasterProfile.status === 'ACTIVE' && (
-                  <div className={isMobile ? '' : 'text-right'}>
+                  <div className={`flex items-center gap-3 ${isMobile ? '' : 'text-right'}`}>
                     <p className="text-gray-400 text-xs">Commission: <span className="text-white font-semibold">{myMasterProfile.approvedCommissionPercentage}%</span></p>
                   </div>
                 )}
@@ -618,54 +756,103 @@ const CopyTradePage = () => {
                   {filteredMasters.map(master => {
                     const isFollowing = mySubscriptions.some(sub => sub.masterId?._id === master._id || sub.masterId === master._id)
                     return (
-                      <div key={master._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-5 border`}>
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-12 h-12 bg-accent-green/20 rounded-full flex items-center justify-center">
-                            <span className="text-accent-green font-bold">{master.displayName?.charAt(0)}</span>
-                          </div>
+                      <div key={master._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl p-5 border hover:border-blue-500/50 transition-all cursor-pointer`} onClick={() => handleViewMasterDetail(master)}>
+                        {/* Header with Profile Photo, Name, Rating */}
+                        <div className="flex items-center gap-3 mb-3">
+                          {master.profileImage ? (
+                            <img src={master.profileImage} alt={master.displayName} className="w-14 h-14 rounded-full object-cover border-2 border-blue-500/30" />
+                          ) : (
+                            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center">
+                              <span className="text-white font-bold text-xl">{master.displayName?.charAt(0)}</span>
+                            </div>
+                          )}
                           <div className="flex-1">
-                            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.displayName}</h3>
-                            <p className="text-gray-500 text-sm">{master.stats?.activeFollowers || 0} followers</p>
+                            <div className="flex items-center gap-2">
+                              <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.displayName}</h3>
+                              {isFollowing && (
+                                <span className="px-2 py-0.5 bg-green-500/20 text-green-500 text-xs rounded-full font-medium">
+                                  Following
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center">
+                                {[1,2,3,4,5].map(star => (
+                                  <Star key={star} size={12} className={star <= Math.round(master.rating?.average || 0) ? 'text-yellow-500 fill-yellow-500' : 'text-gray-500'} />
+                                ))}
+                              </div>
+                              <span className="text-gray-500 text-xs">({master.rating?.totalRatings || 0})</span>
+                            </div>
                           </div>
-                          {isFollowing && (
-                            <span className="px-2 py-1 bg-green-500/20 text-green-500 text-xs rounded-full font-medium">
-                              Following
-                            </span>
+                        </div>
+
+                        {/* Description/Bio */}
+                        {master.description && (
+                          <p className="text-gray-500 text-xs mb-3 line-clamp-2">{master.description}</p>
+                        )}
+
+                        {/* Stats Grid - Row 1 */}
+                        <div className="grid grid-cols-4 gap-2 mb-2">
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Win Rate</p>
+                            <p className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.winRate?.toFixed(0) || 0}%</p>
+                          </div>
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Trades</p>
+                            <p className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.totalTrades || 0}</p>
+                          </div>
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Followers</p>
+                            <p className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.activeFollowers || 0}</p>
+                          </div>
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Copiers</p>
+                            <p className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.currentCopiers || 0}</p>
+                          </div>
+                        </div>
+
+                        {/* Stats Grid - Row 2 */}
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Profit</p>
+                            <p className="text-green-500 font-semibold text-sm">+${(master.stats?.totalProfitGenerated || 0).toFixed(0)}</p>
+                          </div>
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Performance</p>
+                            <p className={`font-semibold text-sm ${(master.stats?.overallPerformance || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {(master.stats?.overallPerformance || 0) >= 0 ? '+' : ''}{(master.stats?.overallPerformance || 0).toFixed(1)}%
+                            </p>
+                          </div>
+                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-2 text-center`}>
+                            <p className="text-gray-500 text-[10px]">Commission</p>
+                            <p className="text-purple-400 font-semibold text-sm">{master.approvedCommissionPercentage || 0}%</p>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleViewMasterDetail(master) }}
+                            className={`flex-1 py-2 rounded-lg font-medium text-sm ${isDarkMode ? 'bg-dark-700 text-gray-300 hover:bg-dark-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            View Details
+                          </button>
+                          {isFollowing ? (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActiveTab('subscriptions') }}
+                              className="flex-1 bg-green-500/20 text-green-500 py-2 rounded-lg font-medium text-sm border border-green-500/50"
+                            >
+                              ✓ Following
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedMaster(master); setShowFollowModal(true) }}
+                              className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-2 rounded-lg font-medium text-sm"
+                            >
+                              Follow
+                            </button>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
-                            <p className="text-gray-500 text-xs">Win Rate</p>
-                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.winRate?.toFixed(1) || 0}%</p>
-                          </div>
-                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
-                            <p className="text-gray-500 text-xs">Total Trades</p>
-                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.stats?.totalTrades || 0}</p>
-                          </div>
-                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
-                            <p className="text-gray-500 text-xs">Commission</p>
-                            <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{master.approvedCommissionPercentage || 0}%</p>
-                          </div>
-                          <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
-                            <p className="text-gray-500 text-xs">Profit</p>
-                            <p className="text-accent-green font-semibold">${master.stats?.totalProfitGenerated?.toFixed(2) || '0.00'}</p>
-                          </div>
-                        </div>
-                        {isFollowing ? (
-                          <button
-                            onClick={() => setActiveTab('subscriptions')}
-                            className="w-full bg-green-500/20 text-green-500 py-2 rounded-lg font-medium border border-green-500/50 hover:bg-green-500/30"
-                          >
-                            ✓ {t('copytrade.following')}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => { setSelectedMaster(master); setShowFollowModal(true) }}
-                            className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-2 rounded-lg font-medium hover:bg-accent-green/90"
-                          >
-                            {t('copytrade.follow')}
-                          </button>
-                        )}
                       </div>
                     )
                   })}
@@ -1165,6 +1352,233 @@ const CopyTradePage = () => {
         </div>
       )}
 
+      {/* Master Detail Modal */}
+      {showMasterDetailModal && selectedMasterDetail && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className={`${isDarkMode ? 'bg-dark-800' : 'bg-white'} rounded-2xl w-full max-w-3xl border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} max-h-[90vh] overflow-y-auto`}>
+            {/* Header */}
+            <div className={`sticky top-0 ${isDarkMode ? 'bg-dark-800' : 'bg-white'} p-6 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} z-10`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  {selectedMasterDetail.profileImage ? (
+                    <img src={selectedMasterDetail.profileImage} alt={selectedMasterDetail.displayName} className="w-16 h-16 rounded-full object-cover border-2 border-blue-500" />
+                  ) : (
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-2xl">{selectedMasterDetail.displayName?.charAt(0)}</span>
+                    </div>
+                  )}
+                  <div>
+                    <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{selectedMasterDetail.displayName}</h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center">
+                        {[1,2,3,4,5].map(star => (
+                          <Star key={star} size={16} className={star <= Math.round(masterDetailStats?.rating?.average || 0) ? 'text-yellow-500 fill-yellow-500' : 'text-gray-500'} />
+                        ))}
+                      </div>
+                      <span className="text-gray-500 text-sm">{masterDetailStats?.rating?.average || 0} ({masterDetailStats?.rating?.totalRatings || 0} ratings)</span>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => setShowMasterDetailModal(false)} className="text-gray-400 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+              {selectedMasterDetail.description && (
+                <p className="text-gray-500 text-sm mt-3">{selectedMasterDetail.description}</p>
+              )}
+            </div>
+
+            {loadingMasterDetail ? (
+              <div className="p-12 text-center text-gray-500">Loading details...</div>
+            ) : (
+              <div className="p-6 space-y-6">
+                {/* Stats Overview */}
+                <div>
+                  <h3 className={`font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Performance Statistics</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Win Rate</p>
+                      <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{masterDetailStats?.stats?.winRate || 0}%</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Total Trades</p>
+                      <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{masterDetailStats?.stats?.totalTrades || 0}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Profitable</p>
+                      <p className="font-bold text-lg text-green-500">{masterDetailStats?.stats?.profitableTrades || 0}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Losing</p>
+                      <p className="font-bold text-lg text-red-500">{masterDetailStats?.stats?.losingTrades || 0}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Max Profit</p>
+                      <p className="font-bold text-lg text-green-500">+${masterDetailStats?.stats?.maxProfit || '0.00'}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Max Loss</p>
+                      <p className="font-bold text-lg text-red-500">-${masterDetailStats?.stats?.maxLoss || '0.00'}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Net Profit</p>
+                      <p className={`font-bold text-lg ${parseFloat(masterDetailStats?.stats?.netProfit || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        ${masterDetailStats?.stats?.netProfit || '0.00'}
+                      </p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Performance</p>
+                      <p className={`font-bold text-lg ${parseFloat(masterDetailStats?.stats?.overallPerformance || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {parseFloat(masterDetailStats?.stats?.overallPerformance || 0) >= 0 ? '+' : ''}{masterDetailStats?.stats?.overallPerformance || 0}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 mt-3">
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Followers</p>
+                      <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{masterDetailStats?.stats?.totalFollowers || 0}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Active Copiers</p>
+                      <p className={`font-bold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{masterDetailStats?.stats?.currentCopiers || 0}</p>
+                    </div>
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3 text-center`}>
+                      <p className="text-gray-500 text-xs">Commission</p>
+                      <p className="font-bold text-lg text-purple-400">{selectedMasterDetail.approvedCommissionPercentage || 0}%</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trade History */}
+                <div>
+                  <h3 className={`font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recent Trade History</h3>
+                  {masterTrades.length === 0 ? (
+                    <p className="text-gray-500 text-center py-4">No trades yet</p>
+                  ) : (
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg overflow-hidden`}>
+                      <table className="w-full text-sm">
+                        <thead className={isDarkMode ? 'bg-dark-600' : 'bg-gray-100'}>
+                          <tr>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium">Symbol</th>
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium">Side</th>
+                            <th className="text-right px-3 py-2 text-gray-500 font-medium">Lots</th>
+                            <th className="text-right px-3 py-2 text-gray-500 font-medium">P/L</th>
+                            <th className="text-right px-3 py-2 text-gray-500 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {masterTrades.slice(0, 10).map((trade, idx) => (
+                            <tr key={trade._id || idx} className={`border-t ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                              <td className={`px-3 py-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{trade.symbol}</td>
+                              <td className={`px-3 py-2 ${trade.side === 'BUY' ? 'text-green-500' : 'text-red-500'}`}>{trade.side}</td>
+                              <td className={`px-3 py-2 text-right ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{trade.quantity}</td>
+                              <td className={`px-3 py-2 text-right font-medium ${(trade.realizedPnl || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {(trade.realizedPnl || 0) >= 0 ? '+' : ''}${(trade.realizedPnl || 0).toFixed(2)}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <span className={`px-2 py-0.5 rounded text-xs ${
+                                  trade.status === 'OPEN' ? 'bg-blue-500/20 text-blue-500' :
+                                  trade.status === 'CLOSED' ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'
+                                }`}>
+                                  {trade.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Rating Section */}
+                <div>
+                  <h3 className={`font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Rate This Master</h3>
+                  {mySubscriptions.some(sub => sub.masterId?._id === selectedMasterDetail._id || sub.masterId === selectedMasterDetail._id) ? (
+                    <div className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-4`}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-gray-500 text-sm">Your Rating:</span>
+                        <div className="flex items-center gap-1">
+                          {[1,2,3,4,5].map(star => (
+                            <button
+                              key={star}
+                              onClick={() => setUserRating(star)}
+                              className="focus:outline-none"
+                            >
+                              <Star size={24} className={star <= userRating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-500 hover:text-yellow-400'} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <textarea
+                        value={userReview}
+                        onChange={(e) => setUserReview(e.target.value)}
+                        placeholder="Write a review (optional)"
+                        className={`w-full ${isDarkMode ? 'bg-dark-600 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'} border rounded-lg px-3 py-2 text-sm`}
+                        rows={2}
+                      />
+                      <button
+                        onClick={handleSubmitRating}
+                        disabled={submittingRating || userRating === 0}
+                        className={`mt-2 px-4 py-2 rounded-lg text-sm font-medium ${
+                          submittingRating || userRating === 0
+                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
+                      >
+                        {submittingRating ? 'Submitting...' : 'Submit Rating'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">Follow this master to rate them</p>
+                  )}
+
+                  {/* Existing Ratings */}
+                  {masterRatings.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      <h4 className="text-gray-500 text-sm">Recent Reviews</h4>
+                      {masterRatings.slice(0, 5).map((rating, idx) => (
+                        <div key={rating._id || idx} className={`${isDarkMode ? 'bg-dark-700' : 'bg-gray-50'} rounded-lg p-3`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {rating.userId?.firstName || 'User'}
+                            </span>
+                            <div className="flex items-center">
+                              {[1,2,3,4,5].map(star => (
+                                <Star key={star} size={12} className={star <= rating.rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-500'} />
+                              ))}
+                            </div>
+                          </div>
+                          {rating.review && <p className="text-gray-500 text-xs">{rating.review}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t border-gray-700">
+                  <button
+                    onClick={() => setShowMasterDetailModal(false)}
+                    className={`flex-1 py-3 rounded-lg font-medium ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  >
+                    Close
+                  </button>
+                  {!mySubscriptions.some(sub => sub.masterId?._id === selectedMasterDetail._id || sub.masterId === selectedMasterDetail._id) && (
+                    <button
+                      onClick={() => { setShowMasterDetailModal(false); setSelectedMaster(selectedMasterDetail); setShowFollowModal(true) }}
+                      className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-lg font-medium"
+                    >
+                      Follow This Master
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Withdraw to Wallet Modal */}
       {showWithdrawModal && myMasterProfile && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -1240,6 +1654,93 @@ const CopyTradePage = () => {
                     Withdraw
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Master Profile Modal */}
+      {showEditMasterModal && myMasterProfile && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className={`${isDarkMode ? 'bg-dark-800' : 'bg-white'} rounded-2xl p-6 w-full max-w-md border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Edit Master Settings</h2>
+              <button onClick={() => setShowEditMasterModal(false)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className={`text-sm mb-1 block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Display Name</label>
+                <input
+                  type="text"
+                  value={editMasterForm.displayName}
+                  onChange={(e) => setEditMasterForm(prev => ({ ...prev, displayName: e.target.value }))}
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
+                  placeholder="Your trading name"
+                />
+              </div>
+
+              <div>
+                <label className={`text-sm mb-1 block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Strategy Description</label>
+                <textarea
+                  value={editMasterForm.description}
+                  onChange={(e) => setEditMasterForm(prev => ({ ...prev, description: e.target.value }))}
+                  className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'} border rounded-lg px-3 py-2`}
+                  rows={3}
+                  placeholder="Describe your trading strategy..."
+                />
+              </div>
+
+              <div>
+                <label className={`text-sm mb-1 block ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Commission Percentage</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={editMasterForm.commissionPercentage}
+                    onChange={(e) => setEditMasterForm(prev => ({ ...prev, commissionPercentage: parseFloat(e.target.value) || 0 }))}
+                    min="0"
+                    max="50"
+                    step="1"
+                    className={`w-full ${isDarkMode ? 'bg-dark-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'} border rounded-lg px-3 py-2 pr-10`}
+                  />
+                  <span className={`absolute right-3 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>%</span>
+                </div>
+                <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  This is the percentage of profit you earn from followers. Range: 0-50%
+                </p>
+              </div>
+
+              <div className={`${isDarkMode ? 'bg-blue-500/10 border-blue-500/30' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3`}>
+                <p className={`text-sm ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                  <DollarSign size={14} className="inline mr-1" />
+                  Current commission: <strong>{myMasterProfile.approvedCommissionPercentage}%</strong>
+                  {editMasterForm.commissionPercentage !== myMasterProfile.approvedCommissionPercentage && (
+                    <span className="ml-2">→ New: <strong>{editMasterForm.commissionPercentage}%</strong></span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowEditMasterModal(false)}
+                className={`flex-1 py-3 rounded-lg ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveMasterProfile}
+                disabled={savingMasterProfile}
+                className={`flex-1 py-3 rounded-lg font-medium flex items-center justify-center gap-2 ${
+                  savingMasterProfile
+                    ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
+                }`}
+              >
+                {savingMasterProfile ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

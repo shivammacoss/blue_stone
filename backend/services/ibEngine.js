@@ -5,6 +5,7 @@ import IBReferral from '../models/IBReferral.js'
 import IBSettings from '../models/IBSettings.js'
 import Trade from '../models/Trade.js'
 import User from '../models/User.js'
+import TradingAccount from '../models/TradingAccount.js'
 
 class IBEngine {
   constructor() {
@@ -71,6 +72,17 @@ class IBEngine {
     const contractSize = this.getContractSize(trade.symbol)
     const tradeVolume = trade.quantity * contractSize
 
+    // Get trader's account type for account-specific commission rates
+    let accountTypeId = null
+    let accountTypeName = null
+    if (trade.tradingAccountId) {
+      const tradingAccount = await TradingAccount.findById(trade.tradingAccountId).populate('accountTypeId')
+      if (tradingAccount?.accountTypeId) {
+        accountTypeId = tradingAccount.accountTypeId._id
+        accountTypeName = tradingAccount.accountTypeId.name
+      }
+    }
+
     for (const { ibUser, level } of ibChain) {
       try {
         // Get IB's plan - need to populate if it's just an ObjectId
@@ -91,8 +103,24 @@ class IBEngine {
         if (level > plan.maxLevels) continue
 
         // Get commission rate for this level
+        // First check if there's account type specific commission
         const levelKey = `level${level}`
-        const commissionRate = plan.levelCommissions[levelKey] || 0
+        let commissionRate = 0
+        
+        if (accountTypeId && plan.accountTypeCommissions?.length > 0) {
+          const accountTypeConfig = plan.accountTypeCommissions.find(
+            atc => atc.accountTypeId?.toString() === accountTypeId.toString()
+          )
+          if (accountTypeConfig?.levelCommissions?.[levelKey]) {
+            commissionRate = accountTypeConfig.levelCommissions[levelKey]
+          }
+        }
+        
+        // Fall back to default level commission if no account type specific rate
+        if (commissionRate <= 0) {
+          commissionRate = plan.levelCommissions[levelKey] || 0
+        }
+        
         if (commissionRate <= 0) continue
 
         // Calculate commission based on sources
@@ -139,6 +167,8 @@ class IBEngine {
           symbol: trade.symbol,
           tradeLotSize: trade.quantity,
           tradeVolume,
+          accountTypeId: accountTypeId,
+          accountTypeName: accountTypeName,
           commissionType: plan.commissionType,
           commissionRate,
           sourceBreakdown,

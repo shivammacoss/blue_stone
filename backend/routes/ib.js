@@ -5,6 +5,7 @@ import IBCommission from '../models/IBCommission.js'
 import IBReferral from '../models/IBReferral.js'
 import IBSettings from '../models/IBSettings.js'
 import User from '../models/User.js'
+import AccountType from '../models/AccountType.js'
 import ibEngine from '../services/ibEngine.js'
 
 const router = express.Router()
@@ -621,10 +622,20 @@ router.put('/admin/reject-withdrawal/:id', async (req, res) => {
 
 // ==================== IB PLAN ROUTES ====================
 
+// GET /api/ib/admin/account-types - Get all account types for IB commission setup
+router.get('/admin/account-types', async (req, res) => {
+  try {
+    const accountTypes = await AccountType.find({ isActive: true }).select('_id name description minDeposit')
+    res.json({ accountTypes })
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching account types', error: error.message })
+  }
+})
+
 // GET /api/ib/admin/plans - Get all IB plans
 router.get('/admin/plans', async (req, res) => {
   try {
-    const plans = await IBPlan.find().sort({ createdAt: -1 })
+    const plans = await IBPlan.find().sort({ createdAt: -1 }).populate('accountTypeCommissions.accountTypeId', 'name')
     res.json({ plans })
   } catch (error) {
     res.status(500).json({ message: 'Error fetching plans', error: error.message })
@@ -634,7 +645,7 @@ router.get('/admin/plans', async (req, res) => {
 // POST /api/ib/admin/plans - Create IB plan
 router.post('/admin/plans', async (req, res) => {
   try {
-    const { name, description, maxLevels, commissionType, levelCommissions, commissionSources, minWithdrawalAmount, isDefault } = req.body
+    const { name, description, maxLevels, commissionType, levelCommissions, commissionSources, minWithdrawalAmount, isDefault, accountTypeCommissions } = req.body
 
     const plan = await IBPlan.create({
       name,
@@ -643,6 +654,7 @@ router.post('/admin/plans', async (req, res) => {
       commissionType: commissionType || 'PER_LOT',
       levelCommissions: levelCommissions || {},
       commissionSources: commissionSources || {},
+      accountTypeCommissions: accountTypeCommissions || [],
       minWithdrawalAmount: minWithdrawalAmount || 50,
       isDefault: isDefault || false
     })

@@ -50,6 +50,9 @@ const AdminIBManagement = () => {
   const [showLevelModal, setShowLevelModal] = useState(false)
   const [editingLevel, setEditingLevel] = useState(null)
   
+  // Account Types for IB commission
+  const [accountTypes, setAccountTypes] = useState([])
+  
   // IB Details Modal states
   const [showIBModal, setShowIBModal] = useState(false)
   const [viewingIB, setViewingIB] = useState(null)
@@ -65,6 +68,7 @@ const AdminIBManagement = () => {
     fetchSettings()
     fetchAllUsers()
     fetchIBLevels()
+    fetchAccountTypes()
 
     // Auto-refresh every 10 seconds
     const refreshInterval = setInterval(() => {
@@ -217,6 +221,16 @@ const AdminIBManagement = () => {
       setIbLevels(data.levels || [])
     } catch (error) {
       console.error('Error fetching IB levels:', error)
+    }
+  }
+
+  const fetchAccountTypes = async () => {
+    try {
+      const res = await fetch(`${API_URL}/ib/admin/account-types`)
+      const data = await res.json()
+      setAccountTypes(data.accountTypes || [])
+    } catch (error) {
+      console.error('Error fetching account types:', error)
     }
   }
 
@@ -1072,6 +1086,7 @@ const AdminIBManagement = () => {
           plan={editingPlan}
           onSave={handleSavePlan}
           onClose={() => { setShowPlanModal(false); setEditingPlan(null); }}
+          accountTypes={accountTypes}
         />
       )}
 
@@ -1104,24 +1119,61 @@ const AdminIBManagement = () => {
 }
 
 // Plan Modal Component
-const PlanModal = ({ plan, onSave, onClose }) => {
+const PlanModal = ({ plan, onSave, onClose, accountTypes = [] }) => {
   const [formData, setFormData] = useState({
     name: plan?.name || '',
     description: plan?.description || '',
     maxLevels: plan?.maxLevels || 3,
     commissionType: plan?.commissionType || 'PER_LOT',
     levelCommissions: plan?.levelCommissions || { level1: 5, level2: 3, level3: 2, level4: 1, level5: 0.5 },
+    accountTypeCommissions: plan?.accountTypeCommissions || [],
     isDefault: plan?.isDefault || false
   })
+  const [showAccountTypes, setShowAccountTypes] = useState(false)
 
   const handleSubmit = (e) => {
     e.preventDefault()
     onSave(formData)
   }
 
+  const addAccountTypeCommission = (accountType) => {
+    const exists = formData.accountTypeCommissions.find(atc => atc.accountTypeId === accountType._id)
+    if (exists) return
+    
+    setFormData({
+      ...formData,
+      accountTypeCommissions: [
+        ...formData.accountTypeCommissions,
+        {
+          accountTypeId: accountType._id,
+          accountTypeName: accountType.name,
+          levelCommissions: { level1: 0, level2: 0, level3: 0, level4: 0, level5: 0 }
+        }
+      ]
+    })
+  }
+
+  const removeAccountTypeCommission = (accountTypeId) => {
+    setFormData({
+      ...formData,
+      accountTypeCommissions: formData.accountTypeCommissions.filter(atc => atc.accountTypeId !== accountTypeId)
+    })
+  }
+
+  const updateAccountTypeCommission = (accountTypeId, level, value) => {
+    setFormData({
+      ...formData,
+      accountTypeCommissions: formData.accountTypeCommissions.map(atc => 
+        atc.accountTypeId === accountTypeId 
+          ? { ...atc, levelCommissions: { ...atc.levelCommissions, [level]: parseFloat(value) || 0 } }
+          : atc
+      )
+    })
+  }
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-dark-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-dark-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-4 border-b border-gray-700">
           <h3 className="text-white font-semibold text-lg">{plan ? 'Edit Plan' : 'Create Plan'}</h3>
         </div>
@@ -1198,6 +1250,76 @@ const PlanModal = ({ plan, onSave, onClose }) => {
             />
             <label className="text-gray-400 text-sm">Set as default plan</label>
           </div>
+
+          {/* Account Type Specific Commissions */}
+          <div className="border-t border-gray-700 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <label className="text-gray-400 text-sm block">Account Type Specific Commissions</label>
+                <p className="text-gray-600 text-xs">Override default rates for specific account types</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAccountTypes(!showAccountTypes)}
+                className="px-3 py-1.5 bg-blue-500/20 text-blue-500 rounded-lg text-sm hover:bg-blue-500/30"
+              >
+                + Add Account Type
+              </button>
+            </div>
+
+            {showAccountTypes && accountTypes.length > 0 && (
+              <div className="bg-dark-700 rounded-lg p-3 mb-3">
+                <p className="text-gray-400 text-xs mb-2">Select account type:</p>
+                <div className="flex flex-wrap gap-2">
+                  {accountTypes.filter(at => !formData.accountTypeCommissions.find(atc => atc.accountTypeId === at._id)).map(at => (
+                    <button
+                      key={at._id}
+                      type="button"
+                      onClick={() => { addAccountTypeCommission(at); setShowAccountTypes(false); }}
+                      className="px-3 py-1.5 bg-dark-600 text-white rounded-lg text-sm hover:bg-dark-500"
+                    >
+                      {at.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {formData.accountTypeCommissions.length > 0 && (
+              <div className="space-y-3">
+                {formData.accountTypeCommissions.map((atc) => (
+                  <div key={atc.accountTypeId} className="bg-dark-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium text-sm">{atc.accountTypeName}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAccountTypeCommission(atc.accountTypeId)}
+                        className="text-red-500 hover:text-red-400 text-xs"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {[1, 2, 3, 4, 5].map(level => (
+                        <div key={level}>
+                          <label className="text-gray-500 text-xs">L{level}</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={atc.levelCommissions[`level${level}`] || 0}
+                            onChange={(e) => updateAccountTypeCommission(atc.accountTypeId, `level${level}`, e.target.value)}
+                            className="w-full bg-dark-600 border border-gray-600 rounded-lg px-2 py-1 text-white text-sm"
+                            disabled={level > formData.maxLevels}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-4">
             <button
               type="button"

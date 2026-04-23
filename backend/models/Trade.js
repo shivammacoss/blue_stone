@@ -143,6 +143,20 @@ const tradeSchema = new mongoose.Schema({
   adminModifiedAt: {
     type: Date,
     default: null
+  },
+  // A-Book / B-Book routing
+  bookType: {
+    type: String,
+    enum: ['A_BOOK', 'B_BOOK', null],
+    default: null
+  },
+  lpRouted: {
+    type: Boolean,
+    default: false
+  },
+  lpOrderId: {
+    type: String,
+    default: null
   }
 }, { timestamps: true })
 

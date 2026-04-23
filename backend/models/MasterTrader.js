@@ -50,15 +50,28 @@ const masterTraderSchema = new mongoose.Schema({
     enum: ['PUBLIC', 'PRIVATE'],
     default: 'PUBLIC'
   },
+  // Rating system
+  rating: {
+    average: { type: Number, default: 0 },
+    totalRatings: { type: Number, default: 0 },
+    totalScore: { type: Number, default: 0 }
+  },
   // Statistics (updated periodically)
   stats: {
     totalFollowers: { type: Number, default: 0 },
     activeFollowers: { type: Number, default: 0 },
     totalCopiedVolume: { type: Number, default: 0 },
     totalProfitGenerated: { type: Number, default: 0 },
+    totalLossGenerated: { type: Number, default: 0 },
     winRate: { type: Number, default: 0 },
     totalTrades: { type: Number, default: 0 },
-    profitableTrades: { type: Number, default: 0 }
+    profitableTrades: { type: Number, default: 0 },
+    losingTrades: { type: Number, default: 0 },
+    maxProfit: { type: Number, default: 0 },
+    maxLoss: { type: Number, default: 0 },
+    overallPerformance: { type: Number, default: 0 },
+    avgTradeProfit: { type: Number, default: 0 },
+    currentCopiers: { type: Number, default: 0 }
   },
   // Commission tracking
   pendingCommission: {

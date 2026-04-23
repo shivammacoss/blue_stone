@@ -406,6 +406,9 @@ class CopyTradingEngine {
           await follower.save()
         }
 
+        // Update master stats with this trade's PnL
+        await this.updateMasterStatsOnTradeClose(copyTrade.masterId, result.realizedPnl)
+
         console.log(`[CopyTrade] Closed follower trade ${copyTrade.followerTradeId}, PnL: ${result.realizedPnl}`)
         return {
           copyTradeId: copyTrade._id,
@@ -425,6 +428,44 @@ class CopyTradingEngine {
 
     console.log(`[CopyTrade] Close complete: ${results.filter(r => r.status === 'SUCCESS').length}/${copyTrades.length} success`)
     return results
+  }
+
+  // Update master stats when a trade closes
+  async updateMasterStatsOnTradeClose(masterId, pnl) {
+    try {
+      const master = await MasterTrader.findById(masterId)
+      if (!master) return
+
+      // Update trade counts
+      master.stats.totalTrades += 1
+      
+      if (pnl > 0) {
+        master.stats.profitableTrades += 1
+        master.stats.totalProfitGenerated += pnl
+        if (pnl > master.stats.maxProfit) {
+          master.stats.maxProfit = pnl
+        }
+      } else if (pnl < 0) {
+        master.stats.losingTrades += 1
+        master.stats.totalLossGenerated += Math.abs(pnl)
+        if (Math.abs(pnl) > master.stats.maxLoss) {
+          master.stats.maxLoss = Math.abs(pnl)
+        }
+      }
+
+      // Calculate win rate
+      if (master.stats.totalTrades > 0) {
+        master.stats.winRate = (master.stats.profitableTrades / master.stats.totalTrades) * 100
+      }
+
+      // Calculate average trade profit
+      const netProfit = master.stats.totalProfitGenerated - master.stats.totalLossGenerated
+      master.stats.avgTradeProfit = master.stats.totalTrades > 0 ? netProfit / master.stats.totalTrades : 0
+
+      await master.save()
+    } catch (error) {
+      console.error('[CopyTrade] Error updating master stats:', error)
+    }
   }
 
   // Calculate and apply daily commission (run at end of day)
