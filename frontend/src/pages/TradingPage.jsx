@@ -222,21 +222,22 @@ const TradingPage = () => {
         if (priceData && priceData.bid && priceData.bid > 0) {
           const bid = priceData.bid
           const marketAsk = priceData.ask || priceData.bid
-          // Apply admin spread if set
+          // Apply admin spread if set. When admin spread is 0, collapse
+          // bid and ask to the same price so they render identically.
           const adminSpread = currentAdminSpreads[inst.symbol]?.spread || 0
-          const ask = marketAsk + adminSpread
-          const spread = Math.abs(ask - bid) || (bid * 0.0001)
+          const ask = adminSpread === 0 ? bid : marketAsk + adminSpread
+          const spread = Math.abs(ask - bid)
           return { ...inst, bid, ask, spread }
         }
         return inst
       }))
-      
+
       // Update selected instrument with admin spread (only if price is valid)
       const selectedPrice = prices[selectedInstrument?.symbol]
       if (selectedPrice && selectedPrice.bid && selectedPrice.bid > 0) {
         const marketAsk = selectedPrice.ask || selectedPrice.bid
         const adminSpread = currentAdminSpreads[selectedInstrument?.symbol]?.spread || 0
-        const ask = marketAsk + adminSpread
+        const ask = adminSpread === 0 ? selectedPrice.bid : marketAsk + adminSpread
         setSelectedInstrument(prev => ({
           ...prev,
           bid: selectedPrice.bid,

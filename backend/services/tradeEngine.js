@@ -26,8 +26,14 @@ class TradeEngine {
   // For FIXED spread: value is in PIPS (needs conversion based on symbol)
   // For PERCENTAGE spread: value is percentage of price difference
   calculateExecutionPrice(side, bid, ask, spreadValue, spreadType, symbol = '') {
+    // When admin spread is 0, both BUY and SELL execute at the same price
+    // (using bid as the shared reference), matching the UI where bid === ask.
+    if (!spreadValue) {
+      return bid
+    }
+
     let spread = 0
-    
+
     if (spreadType === 'PERCENTAGE') {
       spread = (ask - bid) * (spreadValue / 100)
     } else {
