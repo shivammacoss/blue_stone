@@ -40,6 +40,7 @@ import copyTradingEngine from './services/copyTradingEngine.js'
 import tradeEngine from './services/tradeEngine.js'
 import propTradingEngine from './services/propTradingEngine.js'
 import infowayService from './services/infowayService.js'
+import coinbaseService from './services/coinbaseService.js'
 import EmailTemplate from './models/EmailTemplate.js'
 import { seedEmailTemplates } from './routes/emailTemplates.js'
 
@@ -66,21 +67,24 @@ const priceSubscribers = new Set()
 // Price cache for real-time streaming (shared with Infoway service)
 const priceCache = infowayService.getPriceCache()
 
-// Infoway handles all asset classes: Forex, Crypto, Commodities
+// Price feeds:
+//   - Infoway: Forex, Metals, Energy, Indices (and Stocks via REST)
+//   - Coinbase: Crypto USD pairs (so quoted prices match TradingView's USD
+//     exchanges rather than Binance's USDT pairs)
+// Both feeds write to the same priceCache, so trade engines see one stream.
+
+function broadcastPriceTick(symbol, price) {
+  if (priceSubscribers.size === 0) return
+  io.to('prices').emit('priceUpdate', { symbol, price })
+  io.to('prices').emit('priceStream', {
+    prices: { [symbol]: price },
+    updated: { [symbol]: true },
+    timestamp: Date.now()
+  })
+}
 
 // Infoway WebSocket price update handler - emit tick-to-tick updates
-infowayService.setOnPriceUpdate((symbol, price) => {
-  if (priceSubscribers.size > 0) {
-    // Emit individual price update for tick-to-tick
-    io.to('prices').emit('priceUpdate', { symbol, price })
-    // Also emit as priceStream for compatibility (single symbol update)
-    io.to('prices').emit('priceStream', {
-      prices: { [symbol]: price },
-      updated: { [symbol]: true },
-      timestamp: Date.now()
-    })
-  }
-})
+infowayService.setOnPriceUpdate(broadcastPriceTick)
 
 // Infoway connection status handler
 infowayService.setOnConnectionChange((connected) => {
@@ -89,6 +93,14 @@ infowayService.setOnConnectionChange((connected) => {
 
 // Start Infoway WebSocket connections
 infowayService.connect()
+
+// Coinbase: share the same priceCache + broadcast function
+coinbaseService.init(
+  priceCache,
+  broadcastPriceTick,
+  (connected) => console.log(`[Coinbase] ${connected ? 'Connected' : 'Disconnected'}`)
+)
+coinbaseService.connect()
 
 // Background stop-out check every 5 seconds
 setInterval(async () => {

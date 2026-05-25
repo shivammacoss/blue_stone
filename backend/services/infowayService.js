@@ -31,6 +31,16 @@ const PROTOCOL = {
 // Price cache
 const priceCache = new Map()
 
+// Day-open cache: { symbol -> { price, dateKey } } where dateKey is UTC YYYY-MM-DD
+// Used to compute 24h change% the same way TradingView/exchanges do:
+// change = current - dayOpen, changePercent = (change / dayOpen) * 100
+// Resets automatically when a new UTC day rolls over.
+const dayOpenCache = new Map()
+
+function getUtcDateKey(ts = Date.now()) {
+  return new Date(ts).toISOString().slice(0, 10) // YYYY-MM-DD
+}
+
 // Callbacks
 let onPriceUpdate = null
 let onConnectionChange = null
@@ -284,16 +294,23 @@ function createConnection(businessType, endpoint, symbols) {
             if (CRYPTO_INFOWAY_TO_INTERNAL[symbol]) {
               internalSymbol = CRYPTO_INFOWAY_TO_INTERNAL[symbol]
             }
-            
+
+            const mid = (bestBid + bestAsk) / 2
+            const ts = timestamp || Date.now()
+            const { change, changePercent, dayOpen } = trackDayOpenAndComputeChange(internalSymbol, mid, ts)
+
             const priceData = {
               bid: bestBid,
               ask: bestAsk,
-              mid: (bestBid + bestAsk) / 2,
-              time: timestamp || Date.now()
+              mid,
+              dayOpen,
+              change,
+              changePercent,
+              time: ts
             }
-            
+
             priceCache.set(internalSymbol, priceData)
-            
+
             if (onPriceUpdate) {
               onPriceUpdate(internalSymbol, priceData)
             }
@@ -314,15 +331,21 @@ function createConnection(businessType, endpoint, symbols) {
           // Only update if we don't have depth data
           if (!priceCache.has(internalSymbol)) {
             const priceValue = parseFloat(price)
+            const ts = timestamp || Date.now()
+            const { change, changePercent, dayOpen } = trackDayOpenAndComputeChange(internalSymbol, priceValue, ts)
+
             const priceData = {
               bid: priceValue,
               ask: priceValue,
               mid: priceValue,
-              time: timestamp || Date.now()
+              dayOpen,
+              change,
+              changePercent,
+              time: ts
             }
-            
+
             priceCache.set(internalSymbol, priceData)
-            
+
             if (onPriceUpdate) {
               onPriceUpdate(internalSymbol, priceData)
             }
@@ -399,25 +422,24 @@ async function connect() {
     // Note: Stocks will use REST API fallback if needed (3rd connection not available)
     
     const commonSymbols = [...dynamicSymbols.forex, ...dynamicSymbols.metals, ...dynamicSymbols.energy, ...dynamicSymbols.indices]
-    const cryptoSymbols = dynamicSymbols.crypto.slice(0, 300) // Limit to 300 for WS subscription limit
-    
+
     // Connect to common (Forex + Metals + Energy + Indices)
     connections.common = createConnection('common', WS_ENDPOINTS.common, commonSymbols)
-    
-    // Connect to crypto
-    connections.crypto = createConnection('crypto', WS_ENDPOINTS.crypto, cryptoSymbols)
-    
-    console.log('[Infoway] Using 2 WebSocket connections (plan limit)')
+
+    // Crypto is served by coinbaseService (USD-priced from Coinbase Exchange)
+    // instead of Infoway's USDT pairs from Binance — keeps quoted prices in
+    // line with the USD exchanges shown on TradingView.
+    console.log('[Infoway] Crypto WS skipped — coinbaseService owns crypto USD pairs')
     console.log(`[Infoway] Common (Forex+Metals+Energy+Indices): ${commonSymbols.length} symbols`)
-    console.log(`[Infoway] Crypto: ${cryptoSymbols.length} symbols`)
     console.log(`[Infoway] Stocks: ${dynamicSymbols.stocks.length} symbols (REST API only)`)
 
     // Wait a bit then check connection status
     setTimeout(() => {
-      const connectedCount = Object.values(connections).filter(conn => conn && conn.readyState === WebSocket.OPEN).length
-      console.log(`[Infoway] ${connectedCount}/2 WebSocket connections active`)
-      
-      if (connectedCount > 0) {
+      const activeConns = Object.values(connections).filter(conn => conn && conn.readyState === WebSocket.OPEN)
+      const total = Object.keys(connections).length
+      console.log(`[Infoway] ${activeConns.length}/${total} WebSocket connections active`)
+
+      if (activeConns.length > 0) {
         isConnected = true
         if (onConnectionChange) onConnectionChange(true)
         console.log('[Infoway] Connected successfully')
@@ -466,8 +488,38 @@ function disconnect() {
   console.log('[Infoway] Disconnected all connections')
 }
 
+// Tracks the first price seen for a symbol on each UTC day and computes
+// the 24h change relative to that open price. If a new UTC day has begun,
+// the day-open is reset to the current price (so the first tick of the day
+// shows 0% change, exactly like the open candle).
+function trackDayOpenAndComputeChange(symbol, midPrice, ts) {
+  if (!midPrice || midPrice <= 0) {
+    return { change: 0, changePercent: 0, dayOpen: 0 }
+  }
+  const todayKey = getUtcDateKey(ts)
+  let entry = dayOpenCache.get(symbol)
+  if (!entry || entry.dateKey !== todayKey) {
+    entry = { price: midPrice, dateKey: todayKey }
+    dayOpenCache.set(symbol, entry)
+  }
+  const dayOpen = entry.price
+  const change = midPrice - dayOpen
+  const changePercent = dayOpen > 0 ? (change / dayOpen) * 100 : 0
+  return { change, changePercent, dayOpen }
+}
+
 function getPrice(symbol) {
   return priceCache.get(symbol) || null
+}
+
+function getChange(symbol) {
+  const p = priceCache.get(symbol)
+  if (!p) return { change: 0, changePercent: 0, dayOpen: 0 }
+  return {
+    change: p.change || 0,
+    changePercent: p.changePercent || 0,
+    dayOpen: p.dayOpen || 0
+  }
 }
 
 function getAllPrices() {
@@ -552,6 +604,7 @@ export default {
   connect,
   disconnect,
   getPrice,
+  getChange,
   getAllPrices,
   getPriceCache,
   fetchPriceREST,

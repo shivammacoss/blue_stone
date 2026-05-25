@@ -59,10 +59,10 @@ const TradingPage = () => {
       if (data.success && data.instruments) {
         const instrumentsWithState = data.instruments.map(inst => ({
           ...inst,
-          bid: 0,
-          ask: 0,
+          bid: inst.bid || 0,
+          ask: inst.ask || 0,
           spread: 0,
-          change: 0,
+          change: typeof inst.changePercent === 'number' ? inst.changePercent : 0,
           starred: starredSymbols.includes(inst.symbol)
         }))
         setInstruments(instrumentsWithState)
@@ -227,7 +227,8 @@ const TradingPage = () => {
           const adminSpread = currentAdminSpreads[inst.symbol]?.spread || 0
           const ask = adminSpread === 0 ? bid : marketAsk + adminSpread
           const spread = Math.abs(ask - bid)
-          return { ...inst, bid, ask, spread }
+          const change = typeof priceData.changePercent === 'number' ? priceData.changePercent : inst.change
+          return { ...inst, bid, ask, spread, change }
         }
         return inst
       }))
@@ -413,18 +414,21 @@ const TradingPage = () => {
         setInstruments(prev => prev.map(inst => {
           const priceData = allPrices[inst.symbol]
           if (priceData && priceData.bid) {
-            // Use bid for both if ask not provided, add admin spread
+            // Use bid for both if ask not provided, add admin spread.
+            // When admin spread is 0, collapse bid and ask to the same price
+            // (matches WebSocket path and commit b0988be8 behavior).
             const bid = priceData.bid
             const marketAsk = priceData.ask || priceData.bid
-            // Apply admin spread if set (add to ask price)
             const adminSpread = currentAdminSpreads[inst.symbol]?.spread || 0
-            const ask = marketAsk + adminSpread
-            const spread = Math.abs(ask - bid) || (bid * 0.0001) // Default spread if same
+            const ask = adminSpread === 0 ? bid : marketAsk + adminSpread
+            const spread = Math.abs(ask - bid)
+            const change = typeof priceData.changePercent === 'number' ? priceData.changePercent : inst.change
             return {
               ...inst,
               bid: bid,
               ask: ask,
-              spread: spread
+              spread: spread,
+              change
             }
           }
           return inst
@@ -436,9 +440,8 @@ const TradingPage = () => {
           if (priceData && priceData.bid) {
             const bid = priceData.bid
             const marketAsk = priceData.ask || priceData.bid
-            // Apply admin spread if set (add to ask price)
             const adminSpread = currentAdminSpreads[prev.symbol]?.spread || 0
-            const ask = marketAsk + adminSpread
+            const ask = adminSpread === 0 ? bid : marketAsk + adminSpread
             if (adminSpread > 0) {
               console.log(`[Spread] ${prev.symbol}: marketAsk=${marketAsk}, adminSpread=${adminSpread}, finalAsk=${ask}`)
             }
@@ -446,26 +449,25 @@ const TradingPage = () => {
               ...prev,
               bid: bid,
               ask: ask,
-              spread: Math.abs(ask - bid) || (bid * 0.0001)
+              spread: Math.abs(ask - bid)
             }
           }
           return prev
         })
-        
+
         // Update open tabs with live prices + admin spread
         setOpenTabs(prev => prev.map(tab => {
           const priceData = allPrices[tab.symbol]
           if (priceData && priceData.bid) {
             const bid = priceData.bid
             const marketAsk = priceData.ask || priceData.bid
-            // Apply admin spread if set (add to ask price)
             const adminSpread = currentAdminSpreads[tab.symbol]?.spread || 0
-            const ask = marketAsk + adminSpread
+            const ask = adminSpread === 0 ? bid : marketAsk + adminSpread
             return {
               ...tab,
               bid: bid,
               ask: ask,
-              spread: Math.abs(ask - bid) || (bid * 0.0001)
+              spread: Math.abs(ask - bid)
             }
           }
           return tab
@@ -1683,7 +1685,12 @@ const TradingPage = () => {
                       />
                       <div className="text-left min-w-[55px]">
                         <div className={`text-xs font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{inst.symbol}</div>
-                        <div className="text-green-500 text-[10px]">+{inst.change?.toFixed(2) || '0.00'}%</div>
+                        {(() => {
+                          const ch = Number(inst.change) || 0
+                          const sign = ch > 0 ? '+' : ''
+                          const color = ch > 0 ? 'text-green-500' : ch < 0 ? 'text-red-500' : 'text-gray-500'
+                          return <div className={`${color} text-[10px]`}>{sign}{ch.toFixed(2)}%</div>
+                        })()}
                       </div>
                       <div className="flex-1" />
                       <div className="text-right w-16">

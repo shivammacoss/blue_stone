@@ -54,6 +54,7 @@ router.get('/instruments', async (req, res) => {
     const instruments = symbolsWithPrices.map(symbol => {
       const category = categorizeSymbol(symbol)
       const isPopular = POPULAR_INSTRUMENTS[category]?.includes(symbol) || false
+      const cached = priceCache.get(symbol) || {}
       return {
         symbol,
         name: getInstrumentName(symbol),
@@ -63,7 +64,11 @@ router.get('/instruments', async (req, res) => {
         minVolume: 0.01,
         maxVolume: 100,
         volumeStep: 0.01,
-        popular: isPopular
+        popular: isPopular,
+        bid: cached.bid || 0,
+        ask: cached.ask || 0,
+        change: cached.change || 0,
+        changePercent: cached.changePercent || 0
       }
     })
     
@@ -198,7 +203,15 @@ router.get('/:symbol', async (req, res) => {
     }
     
     if (price) {
-      res.json({ success: true, price: { bid: price.bid, ask: price.ask } })
+      res.json({
+        success: true,
+        price: {
+          bid: price.bid,
+          ask: price.ask,
+          change: price.change || 0,
+          changePercent: price.changePercent || 0
+        }
+      })
     } else {
       res.status(404).json({ success: false, message: 'Price not available' })
     }
@@ -223,20 +236,30 @@ router.post('/batch', async (req, res) => {
     // Get prices from cache first
     for (const symbol of symbols) {
       // Allow any symbol, not just mapped ones
-      
+
       const cached = infowayService.getPrice(symbol)
       if (cached) {
-        prices[symbol] = { bid: cached.bid, ask: cached.ask }
+        prices[symbol] = {
+          bid: cached.bid,
+          ask: cached.ask,
+          change: cached.change || 0,
+          changePercent: cached.changePercent || 0
+        }
       } else {
         missingSymbols.push(symbol)
       }
     }
-    
+
     // Fetch missing prices via REST API
     if (missingSymbols.length > 0) {
       const batchPrices = await infowayService.fetchBatchPricesREST(missingSymbols)
       for (const [symbol, price] of Object.entries(batchPrices)) {
-        prices[symbol] = { bid: price.bid, ask: price.ask }
+        prices[symbol] = {
+          bid: price.bid,
+          ask: price.ask,
+          change: price.change || 0,
+          changePercent: price.changePercent || 0
+        }
       }
     }
     
