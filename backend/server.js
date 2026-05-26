@@ -294,13 +294,18 @@ const PORT = process.env.PORT || 5000
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 
-  // MT5 direct-push (primary A-Book venue when configured). Sync connection
-  // happens lazily on first push, but we kick it off here so the SDK has the
-  // ~10s sync window out of the way before the first trade arrives.
+  // MT5 direct-push (primary A-Book venue when configured). Pre-warm the
+  // SDK so the first trade doesn't pay the ~10s sync cost. The connect()
+  // call has its own circuit breaker + backoff — on failure we just log
+  // once and let admins force a reconnect via /api/book/mt5/connect rather
+  // than letting the SDK enter an internal 1.5s reconnect spam loop.
   if (mt5PushService.isPushConfigured()) {
     mt5PushService.connect()
       .then(() => console.log('[LP] MT5 push connection ready'))
-      .catch(err => console.error('[LP] MT5 push connect failed:', err.message))
+      .catch(err => {
+        console.error('[LP] MT5 push initial connect failed:', err.message)
+        console.error('[LP] Push will retry on next trade or via POST /api/book/mt5/connect')
+      })
   } else {
     console.log('[LP] MT5 push disabled (set MT5_PUSH_ENABLED=true + METAAPI_TOKEN + METAAPI_ACCOUNT_ID to enable)')
   }

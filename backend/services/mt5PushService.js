@@ -49,9 +49,36 @@ let isConnected = false
 let isConnecting = false
 let lastError = null
 
+// Circuit breaker — prevent runaway reconnect loops when MetaAPI is down.
+// The SDK has its own ~1.5s reconnect that spams logs when MetaAPI returns
+// 503 / network is flaky. We wrap with exponential backoff and stop trying
+// after too many failures (admin can force-reconnect via /api/book/mt5/connect).
+let consecutiveFailures = 0
+let nextRetryAt = 0
+let circuitOpen = false  // true = stop auto-retrying, wait for manual reset
+const MIN_RETRY_DELAY_MS = 30 * 1000        // first retry after 30s
+const MAX_RETRY_DELAY_MS = 10 * 60 * 1000   // cap at 10 min between auto-retries
+const FAILURE_TRIP_THRESHOLD = 5             // open circuit after 5 consecutive fails
+
 const log = (...args) => console.log('[MT5 Push]', ...args)
 const warn = (...args) => console.warn('[MT5 Push]', ...args)
 const error = (...args) => console.error('[MT5 Push]', ...args)
+
+// Suppress MetaAPI SDK's verbose websocket reconnect spam. SDK uses log4js
+// for its internal logging; raising the level to 'fatal' silences the
+// per-1.5s "xhr poll error" lines that flood production logs when MetaAPI
+// returns 503. Our own circuit breaker handles real failures separately.
+;(async () => {
+  try {
+    const log4js = await import('log4js')
+    log4js.default.configure({
+      appenders: { out: { type: 'console' } },
+      categories: { default: { appenders: ['out'], level: 'fatal' } }
+    })
+  } catch (_) {
+    // log4js not directly available — best-effort only, fall through silently.
+  }
+})()
 
 // MetaAPI errors are rich objects: ValidationError throws with .details[] (the
 // real reason — "symbol not found", "volume below min", etc.), TradeError
@@ -97,8 +124,17 @@ export function mapSymbolToMt5(canonical) {
 /**
  * Establish RPC connection to MT5 via MetaAPI SDK. Idempotent — repeated
  * calls return the existing connection if it's still alive.
+ *
+ * Failure handling: if the connect attempt fails (e.g. MetaAPI 503, account
+ * undeployed, network), we (1) close the half-built connection object so
+ * the SDK doesn't enter its own 1.5-second reconnect loop, and (2) enforce
+ * an exponential backoff before the next attempt. After 5 consecutive
+ * failures the breaker opens and stays open until reset via reconnect()
+ * (admin click on "Connect now" / POST /api/book/mt5/connect).
+ *
+ * @param {boolean} forceReset - bypass circuit breaker (used by admin reconnect)
  */
-export async function connect() {
+export async function connect(forceReset = false) {
   if (!PUSH_ENABLED) {
     log('Disabled (set MT5_PUSH_ENABLED=true to enable)')
     return null
@@ -109,9 +145,22 @@ export async function connect() {
   }
   if (isConnected && connection) return connection
   if (isConnecting) {
-    // Wait for the in-flight connect attempt to finish rather than starting another.
     while (isConnecting) await new Promise(r => setTimeout(r, 200))
     return connection
+  }
+
+  if (forceReset) {
+    circuitOpen = false
+    consecutiveFailures = 0
+    nextRetryAt = 0
+  }
+
+  if (circuitOpen) {
+    throw new Error(`MT5 connect circuit-open after ${consecutiveFailures} failures. Last error: ${lastError}. Force reconnect via /api/book/mt5/connect.`)
+  }
+  if (Date.now() < nextRetryAt) {
+    const waitSec = Math.ceil((nextRetryAt - Date.now()) / 1000)
+    throw new Error(`MT5 connect throttled — next retry in ${waitSec}s. Last error: ${lastError}`)
   }
 
   isConnecting = true
@@ -135,12 +184,37 @@ export async function connect() {
     const info = await connection.getAccountInformation()
     isConnected = true
     lastError = null
+    consecutiveFailures = 0
+    nextRetryAt = 0
+    circuitOpen = false
     log(`✓ Connected: login=${info.login} broker=${info.broker} balance=${info.currency} ${info.balance}`)
     return connection
   } catch (err) {
     isConnected = false
     lastError = err.message
-    error(`Connect failed: ${err.message}`)
+    consecutiveFailures++
+
+    // Tear down the half-built connection so the MetaAPI SDK's internal
+    // reconnect loop (which floods logs every ~1.5s) stops.
+    if (connection) {
+      try { await connection.close() } catch (_) {}
+      connection = null
+    }
+    account = null
+    api = null
+
+    if (consecutiveFailures >= FAILURE_TRIP_THRESHOLD) {
+      circuitOpen = true
+      error(`Circuit OPEN after ${consecutiveFailures} failures — auto-retries paused. Use admin "Connect now" to reset. Last error: ${err.message}`)
+    } else {
+      const delay = Math.min(
+        MIN_RETRY_DELAY_MS * Math.pow(2, consecutiveFailures - 1),
+        MAX_RETRY_DELAY_MS
+      )
+      nextRetryAt = Date.now() + delay
+      error(`Connect failed (${consecutiveFailures}/${FAILURE_TRIP_THRESHOLD}): ${err.message}. Next auto-retry in ${Math.round(delay/1000)}s.`)
+    }
+
     throw err
   } finally {
     isConnecting = false
@@ -289,7 +363,10 @@ export function getStatus() {
     accountId: METAAPI_ACCOUNT_ID ? METAAPI_ACCOUNT_ID.substring(0, 8) + '...' : null,
     lastError,
     symbolSuffix: SYMBOL_SUFFIX,
-    volumeMultiplier: VOLUME_MULTIPLIER
+    volumeMultiplier: VOLUME_MULTIPLIER,
+    circuitOpen,
+    consecutiveFailures,
+    nextRetryInSec: nextRetryAt > Date.now() ? Math.ceil((nextRetryAt - Date.now()) / 1000) : 0
   }
 }
 

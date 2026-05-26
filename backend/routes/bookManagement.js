@@ -986,8 +986,9 @@ router.get('/mt5/status', async (req, res) => {
   res.json({ success: true, ...mt5PushService.getStatus() })
 })
 
-// POST /api/book/mt5/connect - Force a (re)connect to MetaAPI. Useful after
-// updating METAAPI_* env vars and restarting, or to warm the SDK before tests.
+// POST /api/book/mt5/connect - Force a (re)connect to MetaAPI. Bypasses the
+// circuit breaker (forceReset=true) — use after MetaAPI outage to wake the
+// service back up without waiting for the next auto-retry window.
 router.post('/mt5/connect', async (req, res) => {
   try {
     if (!mt5PushService.isPushConfigured()) {
@@ -996,10 +997,10 @@ router.post('/mt5/connect', async (req, res) => {
         message: 'MT5 push not configured. Set MT5_PUSH_ENABLED=true and METAAPI_TOKEN/METAAPI_ACCOUNT_ID in .env'
       })
     }
-    await mt5PushService.connect()
+    await mt5PushService.connect(true) // force-reset circuit breaker
     res.json({ success: true, message: 'MT5 connection established', status: mt5PushService.getStatus() })
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message })
+    res.status(500).json({ success: false, message: error.message, status: mt5PushService.getStatus() })
   }
 })
 
