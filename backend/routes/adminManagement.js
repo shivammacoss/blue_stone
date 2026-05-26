@@ -172,11 +172,22 @@ router.post('/send-login-otp', async (req, res) => {
       res.json({ success: true, message: 'OTP sent to your email' })
     } else {
       console.error('Failed to send admin login OTP:', emailResult.message)
-      res.status(500).json({ success: false, message: `Failed to send OTP: ${emailResult.message}` })
+      // Surface the real reason in `message` so the admin login screen
+      // shows it directly (the frontend renders data.message verbatim).
+      res.status(500).json({
+        success: false,
+        message: `OTP send failed: ${emailResult.message}`
+      })
     }
   } catch (error) {
     console.error('Admin send OTP error:', error)
-    res.status(500).json({ success: false, message: 'Failed to send OTP', error: error.message })
+    // Include the real exception message in `message` (not just `error`),
+    // because the AdminLogin UI only renders `data.message`.
+    res.status(500).json({
+      success: false,
+      message: `OTP send failed: ${error.message || 'Unknown error'}`,
+      error: error.message
+    })
   }
 })
 

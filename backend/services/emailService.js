@@ -4,26 +4,65 @@ import EmailTemplate from '../models/EmailTemplate.js'
 
 let transporter = null
 
+/**
+ * Resolve effective SMTP config: prefer EmailSettings DB doc (admin can edit
+ * via UI), fall back to SMTP_* env vars so a fresh production deploy can
+ * bootstrap login OTP without first running admin DB setup. Returns null if
+ * neither source has credentials.
+ */
+export const getSmtpConfig = async () => {
+  try {
+    const settings = await EmailSettings.findOne()
+    if (settings && settings.smtpHost && settings.smtpUser && settings.smtpPass) {
+      return {
+        host: settings.smtpHost,
+        port: settings.smtpPort || 587,
+        user: settings.smtpUser,
+        pass: settings.smtpPass,
+        fromName: settings.fromName || 'Bluestone Exchange',
+        fromEmail: settings.fromEmail || settings.smtpUser,
+        smtpEnabled: settings.smtpEnabled !== false,
+        source: 'db'
+      }
+    }
+  } catch (err) {
+    console.warn('[Email] EmailSettings query failed, falling back to env vars:', err.message)
+  }
+
+  // Env-var fallback (production bootstrap path)
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return {
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+      fromName: process.env.SMTP_FROM_NAME || 'Bluestone Exchange',
+      fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
+      smtpEnabled: true,
+      source: 'env'
+    }
+  }
+
+  return null
+}
+
 // Initialize or get transporter
 const getTransporter = async () => {
-  const settings = await EmailSettings.findOne()
-  
-  if (!settings || !settings.smtpHost || !settings.smtpUser) {
-    return null
-  }
+  const cfg = await getSmtpConfig()
+  if (!cfg) return null
 
   // Port 465 = direct SSL (secure: true)
   // Port 587 = STARTTLS (secure: false, upgrades to TLS)
   // Port 25 = plain (secure: false)
-  const useSecure = settings.smtpPort === 465
+  const useSecure = cfg.port === 465
 
   const transportConfig = {
-    host: settings.smtpHost,
-    port: settings.smtpPort,
+    host: cfg.host,
+    port: cfg.port,
     secure: useSecure,
     auth: {
-      user: settings.smtpUser,
-      pass: settings.smtpPass
+      user: cfg.user,
+      pass: cfg.pass
     },
     tls: {
       rejectUnauthorized: false
@@ -48,51 +87,51 @@ const replaceVariables = (content, variables) => {
 // Send email using template
 export const sendTemplateEmail = async (templateSlug, toEmail, variables = {}) => {
   try {
-    const settings = await EmailSettings.findOne()
-    
-    // Check if SMTP is enabled
-    if (!settings || !settings.smtpEnabled) {
-      console.log('SMTP is disabled, skipping email')
-      return { success: false, message: 'SMTP is disabled' }
+    const cfg = await getSmtpConfig()
+
+    if (!cfg) {
+      const msg = 'SMTP not configured — set SMTP_HOST/SMTP_USER/SMTP_PASS in .env or configure Email Settings in admin panel'
+      console.warn(`[Email] ${msg}`)
+      return { success: false, message: msg }
     }
-    
-    if (!settings.smtpHost) {
-      console.log('Email settings not configured')
-      return { success: false, message: 'Email settings not configured' }
+
+    if (!cfg.smtpEnabled) {
+      console.log('[Email] SMTP is disabled in EmailSettings')
+      return { success: false, message: 'SMTP is disabled in admin Email Settings' }
     }
 
     const template = await EmailTemplate.findOne({ slug: templateSlug })
     if (!template) {
-      console.log(`Template not found: ${templateSlug}`)
-      return { success: false, message: 'Template not found' }
+      console.warn(`[Email] Template not found: ${templateSlug}`)
+      return { success: false, message: `Email template "${templateSlug}" not found (run server restart to auto-seed)` }
     }
 
     if (!template.isEnabled) {
-      console.log(`Template disabled: ${templateSlug}`)
-      return { success: false, message: 'Template is disabled' }
+      console.log(`[Email] Template disabled: ${templateSlug}`)
+      return { success: false, message: `Email template "${templateSlug}" is disabled` }
     }
 
     const transport = await getTransporter()
     if (!transport) {
-      return { success: false, message: 'Failed to create email transport' }
+      return { success: false, message: 'Failed to create SMTP transport' }
     }
 
     const subject = replaceVariables(template.subject, variables)
     const html = replaceVariables(template.htmlContent, variables)
 
     const mailOptions = {
-      from: `"${settings.fromName}" <${settings.fromEmail}>`,
+      from: `"${cfg.fromName}" <${cfg.fromEmail}>`,
       to: toEmail,
       subject: subject,
       html: html
     }
 
     const info = await transport.sendMail(mailOptions)
-    console.log('Email sent:', info.messageId)
-    
+    console.log(`[Email] Sent via ${cfg.source}: ${info.messageId} → ${toEmail}`)
+
     return { success: true, messageId: info.messageId }
   } catch (error) {
-    console.error('Error sending email:', error)
+    console.error('[Email] Send failed:', error)
     return { success: false, message: error.message }
   }
 }
