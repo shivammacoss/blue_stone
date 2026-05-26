@@ -157,6 +157,49 @@ const tradeSchema = new mongoose.Schema({
   lpOrderId: {
     type: String,
     default: null
+  },
+  // LP (Corecen) REST sync state — open/push lifecycle
+  lpSyncStatus: {
+    type: String,
+    enum: ['PENDING', 'SYNCED', 'FAILED', 'NOT_APPLICABLE'],
+    default: 'NOT_APPLICABLE'
+  },
+  lpSyncedAt: {
+    type: Date,
+    default: null
+  },
+  lpSyncError: {
+    type: String,
+    default: null
+  },
+  // LP close lifecycle — recorded separately so recovery scripts can retry failed closes
+  lpCloseStatus: {
+    type: String,
+    enum: ['SYNCED', 'FAILED', null],
+    default: null
+  },
+  lpCloseError: {
+    type: String,
+    default: null
+  },
+  lpCloseAttemptedAt: {
+    type: Date,
+    default: null
+  },
+  // MT5 push state — only populated when MT5_PUSH_ENABLED and the trade is
+  // routed to MT5 (instead of, or in addition to, Corecen). mt5PositionId is
+  // the broker-side ticket we use later to close the same position.
+  mt5PositionId: {
+    type: String,
+    default: null
+  },
+  mt5OrderId: {
+    type: String,
+    default: null
+  },
+  mt5Symbol: {
+    type: String,
+    default: null
   }
 }, { timestamps: true })
 

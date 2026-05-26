@@ -453,9 +453,12 @@ class TradeEngine {
       })
     }
 
-    // Route trade close to LP if A-Book
+    // Route trade close to LP if A-Book — closeOnLP mutates lpCloseStatus
+    // on the trade doc, so persist afterwards. Failure here doesn't roll back
+    // the local close; the recovery script picks up FAILED rows.
     try {
       const closeRouting = await lpService.closeOnLP(trade)
+      await trade.save()
       console.log(`[Trade Close Routing] ${closeRouting.routedTo}: ${trade.symbol} closed - ${closeRouting.message}`)
     } catch (routingError) {
       console.error('[Trade Close Routing] Error:', routingError)

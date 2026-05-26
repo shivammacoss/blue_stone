@@ -25,7 +25,8 @@ const AdminBookManagement = () => {
   const [assignReason, setAssignReason] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const admin = JSON.parse(localStorage.getItem('admin') || '{}')
+  // AdminLogin stores under 'adminUser' key; fall back to legacy 'admin' if present.
+  const admin = JSON.parse(localStorage.getItem('adminUser') || localStorage.getItem('admin') || '{}')
 
   useEffect(() => {
     fetchDashboard()
@@ -98,6 +99,58 @@ const AdminBookManagement = () => {
     setShowAssignModal(true)
   }
 
+  // One-click assignment from the per-row "A Book"/"B Book" buttons. Skips the
+  // modal — admin already chose the destination. No-op when user is already
+  // on the requested book.
+  const handleQuickAssign = async (user, bookType) => {
+    if (user.bookType === bookType) return
+    setSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/book/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          bookType,
+          reason: `Moved to ${bookType === 'A_BOOK' ? 'A-Book' : 'B-Book'} from admin panel`,
+          adminId: admin._id
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        // Success toast with sync summary
+        toast.success(data.message, { duration: 5000 })
+
+        // If some MT5/LP pushes failed, surface details in a second toast
+        // so admin can act (fix symbol mapping, fund hedging account, etc).
+        const errors = data.lpSync?.errors || []
+        if (errors.length > 0) {
+          const lines = errors.slice(0, 3).map(e => `${e.tradeId} (${e.symbol}): ${e.error}`)
+          if (errors.length > 3) lines.push(`...and ${errors.length - 3} more`)
+          toast.error(`Some trades failed to push:\n${lines.join('\n')}`, { duration: 10000 })
+          console.error('[Book Management] LP sync errors:', data.lpSync.errors)
+        }
+        fetchUsers()
+        fetchDashboard()
+        fetchHistory()
+      } else {
+        toast.error(data.message)
+      }
+    } catch (error) {
+      toast.error('Error assigning user')
+    }
+    setSaving(false)
+  }
+
+  const formatChangedAt = (date) => {
+    if (!date) return '-'
+    const d = new Date(date)
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  }
+
   const handleSaveAssignment = async () => {
     if (!assigningUser) return
     
@@ -116,7 +169,13 @@ const AdminBookManagement = () => {
       
       const data = await res.json()
       if (data.success) {
-        toast.success(data.message)
+        toast.success(data.message, { duration: 5000 })
+        const errors = data.lpSync?.errors || []
+        if (errors.length > 0) {
+          const lines = errors.slice(0, 3).map(e => `${e.tradeId} (${e.symbol}): ${e.error}`)
+          if (errors.length > 3) lines.push(`...and ${errors.length - 3} more`)
+          toast.error(`Some trades failed to push:\n${lines.join('\n')}`, { duration: 10000 })
+        }
         setShowAssignModal(false)
         fetchUsers()
         fetchDashboard()
@@ -367,7 +426,7 @@ const AdminBookManagement = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type="text"
-                  placeholder="Search users..."
+                  placeholder="Search by email or name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-dark-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white"
@@ -382,7 +441,7 @@ const AdminBookManagement = () => {
                 <option value="A_BOOK">A-Book Only</option>
                 <option value="B_BOOK">B-Book Only</option>
               </select>
-              
+
               {selectedUsers.length > 0 && (
                 <div className="flex gap-2">
                   <button
@@ -395,7 +454,7 @@ const AdminBookManagement = () => {
                   <button
                     onClick={() => handleBulkAssign('B_BOOK')}
                     disabled={saving}
-                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
                   >
                     Move to B-Book ({selectedUsers.length})
                   </button>
@@ -403,12 +462,12 @@ const AdminBookManagement = () => {
               )}
             </div>
 
-            {/* Users Table */}
+            {/* Users Table — matches second image: User | Email | Current Book | Changed At | Status | Actions */}
             <div className="bg-dark-800 rounded-xl border border-gray-700 overflow-hidden">
               <table className="w-full">
                 <thead className="bg-dark-700">
                   <tr>
-                    <th className="px-4 py-3 text-left">
+                    <th className="px-4 py-3 text-left w-12">
                       <input
                         type="checkbox"
                         checked={selectedUsers.length === users.length && users.length > 0}
@@ -417,69 +476,86 @@ const AdminBookManagement = () => {
                       />
                     </th>
                     <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">User</th>
-                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Book Type</th>
-                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Balance</th>
-                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Trades</th>
-                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Win Rate</th>
-                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">P/L</th>
+                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Email</th>
+                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Current Book</th>
+                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Changed At</th>
+                    <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Status</th>
                     <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map(user => (
-                    <tr key={user._id} className="border-t border-gray-700 hover:bg-dark-700/50">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedUsers.includes(user._id)}
-                          onChange={() => toggleUserSelection(user._id)}
-                          className="w-4 h-4"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="text-white font-medium">{user.firstName} {user.lastName}</p>
-                          <p className="text-gray-400 text-xs">{user.email}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          user.bookType === 'A_BOOK' 
-                            ? 'bg-green-500/20 text-green-400' 
-                            : 'bg-orange-500/20 text-orange-400'
-                        }`}>
-                          {user.bookType === 'A_BOOK' ? 'A-Book' : 'B-Book'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-white">{formatCurrency(user.totalBalance)}</td>
-                      <td className="px-4 py-3 text-gray-300">{user.stats?.totalTrades || 0}</td>
-                      <td className="px-4 py-3">
-                        <span className={user.stats?.winRate >= 50 ? 'text-green-400' : 'text-red-400'}>
-                          {user.stats?.winRate || 0}%
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={user.stats?.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                          {user.stats?.totalPnl >= 0 ? '+' : ''}{formatCurrency(user.stats?.totalPnl || 0)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleAssignUser(user)}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium ${
-                            user.bookType === 'A_BOOK'
-                              ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
-                              : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                          }`}
-                        >
-                          Move to {user.bookType === 'A_BOOK' ? 'B-Book' : 'A-Book'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {users.map(user => {
+                    const isA = user.bookType === 'A_BOOK'
+                    const isActive = (user.status || 'Active') === 'Active'
+                    return (
+                      <tr key={user._id} className="border-t border-gray-700 hover:bg-dark-700/50">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedUsers.includes(user._id)}
+                            onChange={() => toggleUserSelection(user._id)}
+                            className="w-4 h-4"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-white font-medium">
+                          {user.firstName || ''} {user.lastName || ''}
+                        </td>
+                        <td className="px-4 py-3 text-gray-300 text-sm">{user.email}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            isA
+                              ? 'bg-green-500/15 text-green-400'
+                              : 'bg-blue-500/15 text-blue-400'
+                          }`}>
+                            {isA ? 'A Book' : 'B Book'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-400 text-sm">
+                          {formatChangedAt(user.bookChangedAt || user.assignedAt)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            isActive
+                              ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                              : 'bg-gray-500/15 text-gray-400 border border-gray-500/30'
+                          }`}>
+                            {isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleQuickAssign(user, 'A_BOOK')}
+                              disabled={saving || isA}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                isA
+                                  ? 'bg-green-500/10 text-green-500/60 border-green-500/20 cursor-not-allowed'
+                                  : 'bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30'
+                              }`}
+                              title={isA ? 'Already on A-Book' : 'Move to A-Book'}
+                            >
+                              A Book
+                            </button>
+                            <button
+                              onClick={() => handleQuickAssign(user, 'B_BOOK')}
+                              disabled={saving || !isA}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                !isA
+                                  ? 'bg-blue-500/10 text-blue-500/60 border-blue-500/20 cursor-not-allowed'
+                                  : 'bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/30'
+                              }`}
+                              title={!isA ? 'Already on B-Book' : 'Move to B-Book'}
+                            >
+                              B Book
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
-              
+
               {users.length === 0 && (
                 <div className="text-center py-12 text-gray-400">
                   No users found

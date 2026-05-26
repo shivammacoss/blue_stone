@@ -1,191 +1,277 @@
+/**
+ * LP Service — Trade routing facade
+ *
+ * Public API consumed by tradeEngine.js (`routeTrade`, `closeOnLP`, etc.).
+ * Decides A_BOOK vs B_BOOK using BookAssignment, then delegates the actual
+ * LP REST work to lpIntegration.js and persists sync state on the Trade doc
+ * so failed syncs can be retried by scripts/resync-abook-trades.js.
+ */
+
 import BookAssignment from '../models/BookAssignment.js'
 import BookSettings from '../models/BookSettings.js'
+import Trade from '../models/Trade.js'
+import User from '../models/User.js'
+import lpIntegration from './lpIntegration.js'
+import corecenSocket from './corecenSocketClient.js'
+import lpConnectionMonitor from './lpConnectionMonitor.js'
+import mt5PushService from './mt5PushService.js'
 
 class LPService {
-  constructor() {
-    this.connected = false
-    this.lpConfig = null
-  }
-
-  // Initialize LP connection (to be implemented when LP is connected)
-  async connect(config) {
-    this.lpConfig = config
-    // TODO: Implement actual LP connection
-    // Example: Connect to LMAX, Currenex, PrimeXM, etc.
-    console.log('[LP] LP Service initialized (pending connection)')
-    this.connected = false // Set to true when actually connected
-    return { success: true, message: 'LP Service ready for connection' }
-  }
-
-  // Check if user is A-Book
   async isABookUser(userId, tradingAccountId = null) {
     try {
       const bookType = await BookAssignment.getBookType(userId, tradingAccountId)
       return bookType === 'A_BOOK'
     } catch (error) {
       console.error('[LP] Error checking book type:', error)
-      return false // Default to B-Book on error
+      return false
     }
   }
 
-  // Route trade to LP (A-Book) or keep internal (B-Book)
+  // Called by tradeEngine on trade open. Stamps bookType + (for A_BOOK) pushes
+  // the trade to Corecen via REST and records the sync state on the doc.
   async routeTrade(trade, userId, tradingAccountId) {
     const isABook = await this.isABookUser(userId, tradingAccountId)
-    
-    if (isABook) {
-      return await this.sendToLP(trade)
-    } else {
-      return await this.processInternal(trade)
-    }
-  }
 
-  // Send trade to Liquidity Provider (A-Book)
-  async sendToLP(trade) {
-    const settings = await BookSettings.getSettings()
-    
-    // Log A-Book trade for future LP integration
-    console.log('[LP] A-BOOK TRADE - Routing to LP:', {
-      tradeId: trade._id,
-      symbol: trade.symbol,
-      side: trade.side,
-      quantity: trade.quantity,
-      price: trade.openPrice,
-      userId: trade.userId,
-      timestamp: new Date().toISOString()
-    })
-
-    if (!this.connected || !this.lpConfig) {
-      // LP not connected yet - log for manual processing or future integration
-      console.log('[LP] LP not connected - Trade logged for future routing')
-      
+    if (!isABook) {
+      trade.bookType = 'B_BOOK'
+      trade.lpRouted = false
+      trade.lpSyncStatus = 'NOT_APPLICABLE'
+      console.log(`[LP] B-BOOK TRADE - ${trade.symbol} ${trade.side} ${trade.quantity} (internal)`)
       return {
         success: true,
-        routedTo: 'A_BOOK',
+        routedTo: 'B_BOOK',
         lpConnected: false,
-        message: 'Trade logged for LP routing (LP pending connection)',
-        tradeDetails: {
-          tradeId: trade._id,
-          symbol: trade.symbol,
-          side: trade.side,
-          quantity: trade.quantity,
-          openPrice: trade.openPrice,
-          markup: settings.aBookSettings?.markupPips || 0,
-          commission: settings.aBookSettings?.commissionPerLot || 7
+        message: 'Trade processed internally (B-Book)'
+      }
+    }
+
+    trade.bookType = 'A_BOOK'
+
+    const user = await User.findById(userId).catch(() => null)
+
+    // Path selection:
+    //   MT5_PUSH_ENABLED=true  → push directly to MT5 via MetaAPI (PRIMARY)
+    //   else if Corecen creds  → push to Corecen REST (PRIMARY)
+    //   else                   → mark PENDING for later retry
+    if (mt5PushService.isPushConfigured()) {
+      const result = await mt5PushService.pushTrade(trade, user)
+      if (result.success) {
+        trade.lpSyncStatus = 'SYNCED'
+        trade.lpSyncedAt = new Date()
+        trade.lpSyncError = null
+        trade.lpRouted = true
+        trade.mt5PositionId = result.mt5PositionId
+        trade.mt5OrderId = result.mt5OrderId
+        trade.mt5Symbol = result.mt5Symbol
+        trade.lpOrderId = result.mt5PositionId // mirror for legacy callers
+        console.log(`[LP] A-BOOK → MT5: ${trade.symbol} ${trade.side} ${trade.quantity} positionId=${result.mt5PositionId}`)
+        return {
+          success: true,
+          routedTo: 'A_BOOK',
+          venue: 'MT5',
+          lpConnected: true,
+          mt5PositionId: result.mt5PositionId,
+          message: `Pushed to MT5 (positionId=${result.mt5PositionId})`
         }
       }
-    }
-
-    // TODO: Implement actual LP API call when connected
-    // Example structure for future implementation:
-    /*
-    try {
-      const lpResponse = await this.lpClient.sendOrder({
-        symbol: trade.symbol,
-        side: trade.side,
-        quantity: trade.quantity,
-        price: trade.openPrice + (settings.aBookSettings.markupPips * 0.0001),
-        type: 'MARKET',
-        clientOrderId: trade._id.toString()
-      })
-      
+      trade.lpSyncStatus = 'FAILED'
+      trade.lpSyncError = result.error || 'Unknown error'
+      trade.lpRouted = false
+      console.error(`[LP] MT5 push failed for ${trade.symbol}: ${result.error}`)
       return {
         success: true,
         routedTo: 'A_BOOK',
-        lpConnected: true,
-        lpOrderId: lpResponse.orderId,
-        lpExecutionPrice: lpResponse.executionPrice,
-        message: 'Trade sent to LP successfully'
+        venue: 'MT5',
+        lpConnected: false,
+        message: `MT5 push failed: ${result.error}`
       }
-    } catch (error) {
-      console.error('[LP] Error sending to LP:', error)
-      // Fallback to B-Book on LP error
-      return await this.processInternal(trade)
     }
-    */
 
+    if (lpIntegration.isConfigured()) {
+      const result = await lpIntegration.pushTrade(trade, user)
+      if (result.success) {
+        trade.lpSyncStatus = 'SYNCED'
+        trade.lpSyncedAt = new Date()
+        trade.lpSyncError = null
+        trade.lpRouted = true
+        if (result.lp_order_id || result.orderId) {
+          trade.lpOrderId = result.lp_order_id || result.orderId
+        }
+        try { corecenSocket.emitTradeOpened(trade, user) } catch (_) {}
+        console.log(`[LP] A-BOOK → Corecen: ${trade.symbol} ${trade.side} ${trade.quantity}`)
+        return {
+          success: true,
+          routedTo: 'A_BOOK',
+          venue: 'CORECEN',
+          lpConnected: true,
+          lpOrderId: trade.lpOrderId,
+          message: 'Pushed to Corecen LP'
+        }
+      }
+      trade.lpSyncStatus = 'FAILED'
+      trade.lpSyncError = result.error || 'Unknown error'
+      trade.lpRouted = false
+      return {
+        success: true,
+        routedTo: 'A_BOOK',
+        venue: 'CORECEN',
+        lpConnected: false,
+        message: `Corecen push failed: ${result.error}`
+      }
+    }
+
+    // Nothing configured — local-only with retry hint.
+    trade.lpSyncStatus = 'PENDING'
+    trade.lpSyncError = 'No LP venue configured (set MT5_PUSH_ENABLED+METAAPI_* or LP_API_*)'
     return {
       success: true,
       routedTo: 'A_BOOK',
       lpConnected: false,
-      message: 'Trade queued for LP (connection pending)'
+      message: 'Trade queued — no LP venue configured'
     }
   }
 
-  // Process trade internally (B-Book)
-  async processInternal(trade) {
-    console.log('[LP] B-BOOK TRADE - Processing internally:', {
-      tradeId: trade._id,
-      symbol: trade.symbol,
-      side: trade.side,
-      quantity: trade.quantity,
-      userId: trade.userId
-    })
-
-    return {
-      success: true,
-      routedTo: 'B_BOOK',
-      lpConnected: false,
-      message: 'Trade processed internally (B-Book)'
-    }
-  }
-
-  // Close trade on LP (for A-Book trades)
+  // Called by tradeEngine on close. Only hits LP if the original open was
+  // synced — lpSyncStatus is the source of truth, not the user's current book
+  // (admin may have toggled them between open and close).
   async closeOnLP(trade) {
-    const isABook = await this.isABookUser(trade.userId, trade.tradingAccountId)
-    
-    if (!isABook) {
-      return { success: true, routedTo: 'B_BOOK', message: 'Internal close' }
-    }
-
-    console.log('[LP] A-BOOK CLOSE - Routing to LP:', {
-      tradeId: trade._id,
-      symbol: trade.symbol,
-      side: trade.side === 'BUY' ? 'SELL' : 'BUY', // Opposite side to close
-      quantity: trade.quantity,
-      closePrice: trade.closePrice,
-      pnl: trade.pnl
-    })
-
-    if (!this.connected) {
+    if (trade.lpSyncStatus !== 'SYNCED') {
       return {
         success: true,
+        routedTo: trade.bookType || 'B_BOOK',
+        lpConnected: false,
+        message: 'Trade was never synced to LP; nothing to close'
+      }
+    }
+
+    trade.lpCloseAttemptedAt = new Date()
+
+    // If trade was opened on MT5 (has positionId), close it on MT5. Otherwise
+    // fall through to Corecen. We pick the venue based on the *original* push,
+    // not the current config — config may have changed between open and close.
+    if (trade.mt5PositionId) {
+      const result = await mt5PushService.closeTrade(trade)
+      if (result.success) {
+        trade.lpCloseStatus = 'SYNCED'
+        trade.lpCloseError = null
+        return {
+          success: true,
+          routedTo: 'A_BOOK',
+          venue: 'MT5',
+          lpConnected: true,
+          message: 'Close pushed to MT5'
+        }
+      }
+      trade.lpCloseStatus = 'FAILED'
+      trade.lpCloseError = result.error || 'Unknown error'
+      return {
+        success: false,
+        routedTo: 'A_BOOK',
+        venue: 'MT5',
+        lpConnected: false,
+        message: `MT5 close failed: ${result.error}`
+      }
+    }
+
+    if (!lpIntegration.isConfigured()) {
+      trade.lpCloseStatus = 'FAILED'
+      trade.lpCloseError = 'No LP venue configured'
+      return {
+        success: false,
         routedTo: 'A_BOOK',
         lpConnected: false,
-        message: 'Close logged for LP (connection pending)'
+        message: 'No LP venue configured — close not propagated'
       }
     }
 
-    // TODO: Implement actual LP close when connected
+    const result = await lpIntegration.closeTrade(trade)
+    if (result.success) {
+      trade.lpCloseStatus = 'SYNCED'
+      trade.lpCloseError = null
+      try { corecenSocket.emitTradeClosed(trade) } catch (_) {}
+      return {
+        success: true,
+        routedTo: 'A_BOOK',
+        venue: 'CORECEN',
+        lpConnected: true,
+        message: 'Close pushed to Corecen LP'
+      }
+    }
+    trade.lpCloseStatus = 'FAILED'
+    trade.lpCloseError = result.error || 'Unknown error'
     return {
-      success: true,
+      success: false,
       routedTo: 'A_BOOK',
+      venue: 'CORECEN',
       lpConnected: false,
-      message: 'Close queued for LP'
+      message: `Corecen close failed: ${result.error}`
     }
   }
 
-  // Get LP status
+  // Propagate SL/TP modifications to whichever venue holds the trade.
+  async updateOnLP(trade) {
+    if (trade.lpSyncStatus !== 'SYNCED') return { success: true, skipped: true }
+
+    if (trade.mt5PositionId) {
+      return await mt5PushService.updateTrade(trade)
+    }
+    if (!lpIntegration.isConfigured()) return { success: true, skipped: true }
+    const result = await lpIntegration.updateTrade(trade)
+    if (result.success) {
+      try { corecenSocket.emitTradeUpdated(trade) } catch (_) {}
+    }
+    return result
+  }
+
   getStatus() {
+    const cfg = lpIntegration.getConfigStatus()
+    const monitor = lpConnectionMonitor.getStatus()
+    const mt5 = mt5PushService.getStatus()
     return {
-      connected: this.connected,
-      config: this.lpConfig ? {
-        provider: this.lpConfig.provider,
-        endpoint: this.lpConfig.endpoint ? '***configured***' : null
-      } : null
+      // Active venue — MT5 if configured, else Corecen.
+      activeVenue: mt5.configured ? 'MT5' : (cfg.configured ? 'CORECEN' : 'NONE'),
+      mt5: {
+        enabled: mt5.enabled,
+        configured: mt5.configured,
+        connected: mt5.connected,
+        accountId: mt5.accountId,
+        lastError: mt5.lastError
+      },
+      corecen: {
+        configured: cfg.configured,
+        enabled: cfg.enabled,
+        apiUrl: cfg.apiUrl,
+        connected: monitor.connected,
+        lastHeartbeat: monitor.lastHeartbeat,
+        consecutiveFailures: monitor.consecutiveFailures
+      },
+      // Legacy flat fields preserved for existing callers.
+      connected: mt5.configured ? mt5.connected : monitor.connected,
+      configured: mt5.configured || cfg.configured
     }
   }
 
-  // Get routing stats
   async getRoutingStats() {
     const aBookCount = await BookAssignment.countDocuments({ bookType: 'A_BOOK', isActive: true })
     const bBookCount = await BookAssignment.countDocuments({ bookType: 'B_BOOK', isActive: true })
-    
+    const syncedTrades = await Trade.countDocuments({ bookType: 'A_BOOK', lpSyncStatus: 'SYNCED' })
+    const failedTrades = await Trade.countDocuments({ bookType: 'A_BOOK', lpSyncStatus: 'FAILED' })
+    const monitor = lpConnectionMonitor.getStatus()
     return {
       aBookUsers: aBookCount,
       bBookUsers: bBookCount,
-      lpConnected: this.connected,
-      lpProvider: this.lpConfig?.provider || 'Not configured'
+      lpConnected: monitor.connected,
+      lpProvider: 'Corecen',
+      syncedTrades,
+      failedTrades
     }
+  }
+
+  // Apply BookSettings (markup/commission) — informational for now; surfaced
+  // by the admin dashboard. Actual LP execution uses Corecen's broker settings.
+  async getSettingsSnapshot() {
+    const settings = await BookSettings.getSettings()
+    return settings
   }
 }
 

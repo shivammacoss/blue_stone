@@ -57,15 +57,36 @@ bookAssignmentSchema.index({ userId: 1 })
 bookAssignmentSchema.index({ tradingAccountId: 1 })
 bookAssignmentSchema.index({ bookType: 1 })
 
-// Static method to get user's book type
+// Static method to get a user's book type.
+// Resolution order:
+//   1. Account-specific assignment (highest priority) — admin overrode this
+//      particular trading account.
+//   2. User-level assignment (tradingAccountId is null) — admin assigned the
+//      whole user; applies to all their accounts.
+//   3. Default to B_BOOK.
+// This two-step lookup is critical: when admin assigns at user level,
+// queries that pass a trade's tradingAccountId would miss the assignment
+// and incorrectly route trades to B-Book.
 bookAssignmentSchema.statics.getBookType = async function(userId, tradingAccountId = null) {
-  const query = { userId, isActive: true }
   if (tradingAccountId) {
-    query.tradingAccountId = tradingAccountId
+    const accountSpecific = await this.findOne({
+      userId,
+      tradingAccountId,
+      isActive: true
+    }).sort({ createdAt: -1 })
+    if (accountSpecific) return accountSpecific.bookType
   }
-  
-  const assignment = await this.findOne(query).sort({ createdAt: -1 })
-  return assignment?.bookType || 'B_BOOK'
+
+  const userLevel = await this.findOne({
+    userId,
+    $or: [
+      { tradingAccountId: null },
+      { tradingAccountId: { $exists: false } }
+    ],
+    isActive: true
+  }).sort({ createdAt: -1 })
+
+  return userLevel?.bookType || 'B_BOOK'
 }
 
 // Static method to get all A-Book users

@@ -34,6 +34,11 @@ import employeeRoutes from './routes/employee.js'
 import employeeManagementRoutes from './routes/employeeManagement.js'
 import oxapayRoutes from './routes/oxapay.js'
 import bookManagementRoutes from './routes/bookManagement.js'
+import lpIntegrationRoutes from './routes/lpIntegration.js'
+import corecenSocketClient from './services/corecenSocketClient.js'
+import lpConnectionMonitor from './services/lpConnectionMonitor.js'
+import lpIntegration from './services/lpIntegration.js'
+import mt5PushService from './services/mt5PushService.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import copyTradingEngine from './services/copyTradingEngine.js'
@@ -216,8 +221,10 @@ io.on('connection', (socket) => {
   })
 })
 
-// Make io accessible to routes
+// Make io accessible to routes (app-scoped) and to LP routes (global, mirrors
+// concordex so LP price webhooks can fan out without ref-passing).
 app.set('io', io)
+global.io = io
 
 // Middleware
 app.use(compression())
@@ -262,6 +269,7 @@ app.use('/api/employee', employeeRoutes)
 app.use('/api/employee-mgmt', employeeManagementRoutes)
 app.use('/api/oxapay', oxapayRoutes)
 app.use('/api/book', bookManagementRoutes)
+app.use('/api/lp', lpIntegrationRoutes)
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
@@ -285,6 +293,31 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 5000
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
+
+  // MT5 direct-push (primary A-Book venue when configured). Sync connection
+  // happens lazily on first push, but we kick it off here so the SDK has the
+  // ~10s sync window out of the way before the first trade arrives.
+  if (mt5PushService.isPushConfigured()) {
+    mt5PushService.connect()
+      .then(() => console.log('[LP] MT5 push connection ready'))
+      .catch(err => console.error('[LP] MT5 push connect failed:', err.message))
+  } else {
+    console.log('[LP] MT5 push disabled (set MT5_PUSH_ENABLED=true + METAAPI_TOKEN + METAAPI_ACCOUNT_ID to enable)')
+  }
+
+  // Corecen LP (fallback venue / secondary path). Only start if credentials are
+  // configured — avoids noisy reconnect loops in unconfigured dev environments.
+  if (lpIntegration.isConfigured()) {
+    try {
+      corecenSocketClient.initConnection()
+      lpConnectionMonitor.startMonitor()
+      console.log('[LP] Corecen LP integration started')
+    } catch (lpErr) {
+      console.error('[LP] Failed to start Corecen LP:', lpErr.message)
+    }
+  } else {
+    console.log('[LP] Corecen LP not configured — skipping (set LP_API_URL/LP_API_KEY/LP_API_SECRET to enable)')
+  }
   
   // Schedule daily commission calculation for copy trading
   cron.schedule('59 23 * * *', async () => {
