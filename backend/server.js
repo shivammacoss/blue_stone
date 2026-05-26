@@ -232,8 +232,37 @@ app.use(cors())
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ limit: '50mb', extended: true }))
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+// Connect to MongoDB.
+// Defensive sanitization: production .env has sometimes shipped with a
+// corrupted MONGODB_URI (e.g. `w=majo>rity` instead of `w=majority`), which
+// caused every write to fail with "No write concern mode named 'majo>'".
+// We strip any `w=` from the connection string's query and pass write
+// concern explicitly via mongoose options — guarantees a clean connection
+// regardless of URI typos.
+function buildMongoConfig(rawUri) {
+  if (!rawUri) return { uri: rawUri, options: {} }
+  try {
+    const isSrv = rawUri.startsWith('mongodb+srv://')
+    // URL parser doesn't accept mongodb scheme directly; temporarily swap to https.
+    const url = new URL(rawUri.replace(/^mongodb(\+srv)?:\/\//, 'https://'))
+    const removedW = url.searchParams.get('w')
+    if (removedW && removedW !== 'majority') {
+      console.warn(`[MongoDB] Stripping suspicious write concern from URI: w=${JSON.stringify(removedW)} — forcing w=majority`)
+      url.searchParams.delete('w')
+    }
+    const cleanedUri = url.toString().replace(/^https:\/\//, isSrv ? 'mongodb+srv://' : 'mongodb://')
+    return {
+      uri: cleanedUri,
+      options: { writeConcern: { w: 'majority' } }
+    }
+  } catch (err) {
+    console.warn('[MongoDB] URI parse failed, using raw URI:', err.message)
+    return { uri: rawUri, options: { writeConcern: { w: 'majority' } } }
+  }
+}
+
+const mongoCfg = buildMongoConfig(process.env.MONGODB_URI)
+mongoose.connect(mongoCfg.uri, mongoCfg.options)
   .then(async () => {
     console.log('Connected to MongoDB')
     // Auto-seed/sync email templates on startup
