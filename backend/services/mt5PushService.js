@@ -122,6 +122,49 @@ export function mapSymbolToMt5(canonical) {
 }
 
 /**
+ * Build an ordered list of MT5 symbol candidates to try for one BlueStone
+ * canonical symbol. Brokers name silver / gold / crypto wildly differently
+ * (SILVER, XAGUSD, XAGUSD.r, SILVERm, ...), so on push failure we walk this
+ * list before giving up. First entry is the preferred mapping (alias + suffix),
+ * subsequent entries are progressively looser fallbacks. Order matters.
+ */
+export function getSymbolCandidates(canonical) {
+  if (!canonical) return []
+  const upper = canonical.toUpperCase()
+  const suf = SYMBOL_SUFFIX || ''
+  const ordered = []
+  const seen = new Set()
+  const push = (s) => { if (s && !seen.has(s)) { seen.add(s); ordered.push(s) } }
+  const alias = REVERSE_ALIASES[upper]
+  if (alias) {
+    push(alias + suf)
+    push(alias)
+  }
+  push(upper + suf)
+  push(upper)
+  return ordered
+}
+
+// MetaAPI's ValidationError / TradeError shapes differ across SDK versions,
+// but the pre-flight "symbol does not exist" rejection is always recognizable
+// by a few stable substrings. Used to decide whether trying a different
+// candidate symbol could help. We're permissive here — at the point this
+// check runs, no order has been placed yet, so retrying is always safe.
+function looksLikeSymbolError(desc) {
+  if (!desc) return false
+  const hay = [desc.message, desc.summary, ...(desc.details || [])]
+    .filter(Boolean).join(' | ').toLowerCase()
+  if (!hay) return false
+  return (
+    hay.includes('symbol') ||
+    hay.includes('not found') ||
+    hay.includes('unknown') ||
+    hay.includes('invalid') ||
+    hay.includes('does not exist')
+  )
+}
+
+/**
  * Establish RPC connection to MT5 via MetaAPI SDK. Idempotent — repeated
  * calls return the existing connection if it's still alive.
  *
@@ -229,60 +272,97 @@ async function ensureConnected() {
 /**
  * Push a BlueStone trade to MT5. Returns { success, mt5PositionId, mt5OrderId, mt5Symbol, error }.
  * Does NOT throw on push failure — caller persists FAILED state on the trade.
+ *
+ * Symbol fallback: getSymbolCandidates() returns an ordered list of broker
+ * symbols to try (alias+suffix, alias, canonical+suffix, canonical). On a
+ * symbol-shaped failure we fall through to the next candidate so a broker
+ * naming SILVER as "XAGUSD" doesn't strand every XAGUSD trade. Non-symbol
+ * failures (margin, market closed, lot size) abort immediately — retrying
+ * with a different symbol won't help and could mask the real issue.
  */
 export async function pushTrade(trade, user) {
   if (!isPushConfigured()) {
     return { success: false, error: 'MT5 push not configured' }
   }
 
+  let conn
   try {
-    const conn = await ensureConnected()
-    if (!conn) return { success: false, error: 'No MT5 connection' }
+    conn = await ensureConnected()
+  } catch (connErr) {
+    return { success: false, error: `MT5 connect failed: ${connErr.message}` }
+  }
+  if (!conn) return { success: false, error: 'No MT5 connection' }
 
-    const mt5Symbol = mapSymbolToMt5(trade.symbol)
-    const volume = Math.max(0.01, +(trade.quantity * VOLUME_MULTIPLIER).toFixed(2))
-    const sl = trade.stopLoss || trade.sl || undefined
-    const tp = trade.takeProfit || trade.tp || undefined
+  const volume = Math.max(0.01, +(trade.quantity * VOLUME_MULTIPLIER).toFixed(2))
+  const sl = trade.stopLoss || trade.sl || undefined
+  const tp = trade.takeProfit || trade.tp || undefined
 
-    // MetaAPI clientId requires a strict alphanumeric/dash pattern and some
-    // brokers (e.g. MEXAtlantic) further reject 24-char hex MongoDB ObjectIds.
-    // Use the human tradeId ("T1234567890") which is short, starts with a
-    // letter, and is unique. Fall back to the last 12 chars of _id if missing.
-    const safeClientId = (trade.tradeId || trade._id?.toString().slice(-12) || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 31)
-    const options = {
-      comment: `BS-${trade.tradeId || trade._id?.toString().slice(-8)}`,
-      clientId: safeClientId,
-      slippage: DEFAULT_SLIPPAGE
+  // MetaAPI clientId requires a strict alphanumeric/dash pattern and some
+  // brokers (e.g. MEXAtlantic) further reject 24-char hex MongoDB ObjectIds.
+  // Use the human tradeId ("T1234567890") which is short, starts with a
+  // letter, and is unique. Fall back to the last 12 chars of _id if missing.
+  const safeClientId = (trade.tradeId || trade._id?.toString().slice(-12) || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 31)
+  const options = {
+    comment: `BS-${trade.tradeId || trade._id?.toString().slice(-8)}`,
+    clientId: safeClientId,
+    slippage: DEFAULT_SLIPPAGE
+  }
+
+  const candidates = getSymbolCandidates(trade.symbol)
+  if (candidates.length === 0) {
+    return { success: false, error: `No MT5 symbol candidates for ${trade.symbol}` }
+  }
+
+  const isBuy = trade.side?.toUpperCase() === 'BUY'
+  const attempts = []
+  let lastDesc = null
+
+  for (let i = 0; i < candidates.length; i++) {
+    const mt5Symbol = candidates[i]
+    log(`PUSH ${trade.side} ${volume} ${mt5Symbol} (canonical ${trade.symbol}) attempt ${i + 1}/${candidates.length}  tradeId=${trade.tradeId}`)
+
+    try {
+      const result = isBuy
+        ? await conn.createMarketBuyOrder(mt5Symbol, volume, sl, tp, options)
+        : await conn.createMarketSellOrder(mt5Symbol, volume, sl, tp, options)
+
+      log(`✓ Pushed via ${mt5Symbol}: orderId=${result?.orderId} positionId=${result?.positionId} stringCode=${result?.stringCode}`)
+      return {
+        success: true,
+        mt5PositionId: result?.positionId?.toString() || null,
+        mt5OrderId: result?.orderId?.toString() || null,
+        mt5Symbol,
+        symbolAttempts: attempts.length > 0 ? [...attempts, { symbol: mt5Symbol, ok: true }] : undefined,
+        raw: result
+      }
+    } catch (err) {
+      const desc = describeError(err)
+      lastDesc = desc
+      attempts.push({ symbol: mt5Symbol, error: desc.summary })
+
+      if (!looksLikeSymbolError(desc) || i === candidates.length - 1) {
+        // Either this is a non-symbol error (margin / market closed / lot size)
+        // — retrying with a different name won't help — or we've exhausted
+        // every candidate. Either way, stop here and report.
+        error(`Push failed for ${trade.tradeId} (last symbol: ${mt5Symbol}): ${desc.summary}`)
+        return {
+          success: false,
+          error: desc.summary,
+          errorDetails: desc,
+          symbolSent: mt5Symbol,
+          symbolAttempts: attempts
+        }
+      }
+      warn(`Symbol "${mt5Symbol}" rejected (${desc.summary}); trying next candidate...`)
     }
+  }
 
-    log(`PUSH ${trade.side} ${volume} ${mt5Symbol} (canonical ${trade.symbol})  tradeId=${trade.tradeId}`)
-
-    let result
-    if (trade.side?.toUpperCase() === 'BUY') {
-      result = await conn.createMarketBuyOrder(mt5Symbol, volume, sl, tp, options)
-    } else {
-      result = await conn.createMarketSellOrder(mt5Symbol, volume, sl, tp, options)
-    }
-
-    // MetaAPI response shape: { numericCode, stringCode, message, orderId, positionId, ... }
-    log(`✓ Pushed: orderId=${result?.orderId} positionId=${result?.positionId} stringCode=${result?.stringCode}`)
-
-    return {
-      success: true,
-      mt5PositionId: result?.positionId?.toString() || null,
-      mt5OrderId: result?.orderId?.toString() || null,
-      mt5Symbol,
-      raw: result
-    }
-  } catch (err) {
-    const desc = describeError(err)
-    error(`Push failed for ${trade.tradeId} (symbol sent: ${mapSymbolToMt5(trade.symbol)}): ${desc.summary}`)
-    return {
-      success: false,
-      error: desc.summary,
-      errorDetails: desc,
-      symbolSent: mapSymbolToMt5(trade.symbol)
-    }
+  // Defensive — loop should always return inside.
+  return {
+    success: false,
+    error: lastDesc?.summary || 'All symbol candidates exhausted',
+    errorDetails: lastDesc,
+    symbolAttempts: attempts
   }
 }
 
@@ -390,5 +470,6 @@ export default {
   listPositions,
   getStatus,
   disconnect,
-  mapSymbolToMt5
+  mapSymbolToMt5,
+  getSymbolCandidates
 }

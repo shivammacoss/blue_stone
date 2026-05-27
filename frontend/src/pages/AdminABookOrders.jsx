@@ -29,6 +29,9 @@ const AdminABookOrders = () => {
   const [mt5Status, setMt5Status] = useState(null)
   const [reconcile, setReconcile] = useState(null)
   const [syncing, setSyncing] = useState(false)
+  // Per-trade retry state, keyed by mongo _id, so individual rows can show
+  // their own "Retrying..." indicator without blocking the rest of the list.
+  const [retrying, setRetrying] = useState({})
 
   useEffect(() => {
     fetchTrades()
@@ -83,6 +86,43 @@ const AdminABookOrders = () => {
     } catch (e) {
       console.error('Reconcile error:', e)
     }
+  }
+
+  // Retry pushing a single trade to MT5. Hits the diagnostic endpoint that
+  // returns rich error details (errorDetails.details, symbolSent) so the
+  // operator sees exactly which broker symbol was tried and why it failed
+  // ("symbol not found", "min volume", "market closed", etc.).
+  const retrySingleTrade = async (tradeMongoId, tradeId) => {
+    setRetrying(prev => ({ ...prev, [tradeMongoId]: true }))
+    try {
+      const res = await fetch(`${API_URL}/book/mt5/test-push/${tradeMongoId}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        alert(`✓ ${tradeId} pushed to MT5\nPosition ID: ${data.trade?.mt5PositionId}`)
+      } else {
+        const lines = [`✗ ${tradeId} failed to push`]
+        if (data.symbolSent) lines.push(`Symbol sent: ${data.symbolSent}`)
+        lines.push('')
+        lines.push(`Reason: ${data.error || data.message || 'Unknown'}`)
+        if (data.errorDetails?.details?.length) {
+          lines.push('Details:')
+          data.errorDetails.details.forEach(d => lines.push(`  • ${d}`))
+        }
+        if (data.errorDetails?.stringCode) {
+          lines.push(`Code: ${data.errorDetails.stringCode}`)
+        }
+        alert(lines.join('\n'))
+      }
+      await runReconcile()
+      await fetchTrades()
+    } catch (e) {
+      alert(`Retry error: ${e.message}`)
+    }
+    setRetrying(prev => {
+      const next = { ...prev }
+      delete next[tradeMongoId]
+      return next
+    })
   }
 
   // Bulk-push every A-Book open trade that isn't already on MT5. Use this when
@@ -216,12 +256,40 @@ const AdminABookOrders = () => {
           </div>
           {reconcile.missingOnMt5?.length > 0 && (
             <div className="mt-3 text-xs">
-              <p className="text-red-400 mb-1">Trades in BlueStone but not on MT5 (push them with the buttons below):</p>
-              <ul className="text-gray-400 space-y-0.5">
-                {reconcile.missingOnMt5.slice(0, 5).map(t => (
-                  <li key={t._id}>• {t.tradeId} {t.symbol} {t.side} vol={t.volume} ({t.lpSyncStatus})</li>
+              <p className="text-red-400 mb-2">Trades in BlueStone but not on MT5 — click Retry to push and see the broker's rejection reason:</p>
+              <ul className="space-y-2">
+                {reconcile.missingOnMt5.slice(0, 10).map(t => (
+                  <li key={t._id} className="bg-dark-900 rounded p-2 border border-red-500/20">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="text-gray-300">
+                        <span className="font-mono">{t.tradeId}</span>{' '}
+                        <span className="text-green-400">{t.symbol}</span>{' '}
+                        <span className={t.side === 'BUY' ? 'text-green-500' : 'text-red-500'}>{t.side}</span>{' '}
+                        vol={t.volume}{' '}
+                        <span className={`ml-1 px-1.5 py-0.5 rounded ${
+                          t.lpSyncStatus === 'FAILED' ? 'bg-red-500/20 text-red-400' :
+                          t.lpSyncStatus === 'PENDING' ? 'bg-yellow-500/20 text-yellow-400' :
+                          'bg-gray-500/20 text-gray-400'
+                        }`}>{t.lpSyncStatus || 'UNKNOWN'}</span>
+                      </div>
+                      <button
+                        onClick={() => retrySingleTrade(t._id, t.tradeId)}
+                        disabled={!!retrying[t._id] || !mt5Status?.configured}
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-xs rounded"
+                      >
+                        {retrying[t._id] ? 'Retrying...' : 'Retry push'}
+                      </button>
+                    </div>
+                    {t.lpSyncError && (
+                      <p className="text-red-300 mt-1 break-words">
+                        <span className="text-gray-500">Reason: </span>{t.lpSyncError}
+                      </p>
+                    )}
+                  </li>
                 ))}
-                {reconcile.missingOnMt5.length > 5 && <li>... +{reconcile.missingOnMt5.length - 5} more</li>}
+                {reconcile.missingOnMt5.length > 10 && (
+                  <li className="text-gray-500">... +{reconcile.missingOnMt5.length - 10} more</li>
+                )}
               </ul>
             </div>
           )}
