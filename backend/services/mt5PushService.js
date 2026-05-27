@@ -146,22 +146,40 @@ export function getSymbolCandidates(canonical) {
 }
 
 // MetaAPI's ValidationError / TradeError shapes differ across SDK versions,
-// but the pre-flight "symbol does not exist" rejection is always recognizable
-// by a few stable substrings. Used to decide whether trying a different
-// candidate symbol could help. We're permissive here — at the point this
-// check runs, no order has been placed yet, so retrying is always safe.
-function looksLikeSymbolError(desc) {
-  if (!desc) return false
-  const hay = [desc.message, desc.summary, ...(desc.details || [])]
+// but error categorization is stable enough via substring matching. These
+// detectors decide which fallback to apply on a failed push attempt — the
+// symbol loop, or the clientId-drop retry.
+
+// flatten an error description into a single lowercase haystack
+function _flatErr(desc) {
+  if (!desc) return ''
+  return [desc.message, desc.summary, ...(desc.details || [])]
     .filter(Boolean).join(' | ').toLowerCase()
+}
+
+// True when the failure looks like the broker doesn't recognize the symbol
+// we sent. The check requires "symbol" PLUS a not-found-ish word so we don't
+// confuse it with clientId/comment validation errors (which also say "invalid").
+function looksLikeSymbolError(desc) {
+  const hay = _flatErr(desc)
   if (!hay) return false
+  if (!hay.includes('symbol')) return false
   return (
-    hay.includes('symbol') ||
     hay.includes('not found') ||
     hay.includes('unknown') ||
+    hay.includes('does not exist') ||
     hay.includes('invalid') ||
-    hay.includes('does not exist')
+    hay.includes('unsupported')
   )
+}
+
+// True when the MetaAPI validator rejected our clientId — typically a regex
+// failure on the server side because of an unexpected char, length, or
+// broker-specific restriction. We retry the same symbol without a clientId.
+function looksLikeClientIdError(desc) {
+  const hay = _flatErr(desc)
+  if (!hay) return false
+  return hay.includes('clientid') || (hay.includes('pattern') && hay.includes('match'))
 }
 
 /**
@@ -297,14 +315,22 @@ export async function pushTrade(trade, user) {
   const sl = trade.stopLoss || trade.sl || undefined
   const tp = trade.takeProfit || trade.tp || undefined
 
-  // MetaAPI clientId requires a strict alphanumeric/dash pattern and some
-  // brokers (e.g. MEXAtlantic) further reject 24-char hex MongoDB ObjectIds.
-  // Use the human tradeId ("T1234567890") which is short, starts with a
-  // letter, and is unique. Fall back to the last 12 chars of _id if missing.
-  const safeClientId = (trade.tradeId || trade._id?.toString().slice(-12) || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 31)
-  const options = {
-    comment: `BS-${trade.tradeId || trade._id?.toString().slice(-8)}`,
-    clientId: safeClientId,
+  // clientId is intentionally omitted. MetaAPI documents it as optional, and
+  // its server-side regex varies per broker plugin (some reject anything but
+  // [a-z0-9_], some reject digit-leading IDs, some reject all clientIds for
+  // certain venues). We never *read* clientId back from MT5 either —
+  // positionId is the source of truth for close/modify. So sending none is
+  // both safer and zero-cost.
+  //
+  // Comment uses pure alphanumeric (no dash, no underscore) and is capped at
+  // 24 chars to stay well under MetaAPI's combined "comment + clientId ≤ 26"
+  // ceiling even if a future SDK upgrade re-introduces a default clientId.
+  const rawId = (trade.tradeId || trade._id?.toString() || '').replace(/[^A-Za-z0-9]/g, '')
+  const idTail = rawId.slice(-12) || 'unknown'
+  const safeComment = `BS${idTail}`.replace(/[^A-Za-z0-9]/g, '').slice(0, 20)
+
+  const baseOptions = {
+    comment: safeComment,
     slippage: DEFAULT_SLIPPAGE
   }
 
@@ -316,15 +342,20 @@ export async function pushTrade(trade, user) {
   const isBuy = trade.side?.toUpperCase() === 'BUY'
   const attempts = []
   let lastDesc = null
+  // Defense in depth: if MetaAPI somehow still complains about a clientId
+  // (e.g. a broker plugin that auto-injects one), we strip comment too on
+  // the next pass. This latches once tripped.
+  let dropComment = false
 
   for (let i = 0; i < candidates.length; i++) {
     const mt5Symbol = candidates[i]
-    log(`PUSH ${trade.side} ${volume} ${mt5Symbol} (canonical ${trade.symbol}) attempt ${i + 1}/${candidates.length}  tradeId=${trade.tradeId}`)
+    const opts = dropComment ? { slippage: DEFAULT_SLIPPAGE } : baseOptions
+    log(`PUSH ${trade.side} ${volume} ${mt5Symbol} (canonical ${trade.symbol}) attempt ${i + 1}/${candidates.length}${dropComment ? ' (no comment)' : ''}  tradeId=${trade.tradeId}`)
 
     try {
       const result = isBuy
-        ? await conn.createMarketBuyOrder(mt5Symbol, volume, sl, tp, options)
-        : await conn.createMarketSellOrder(mt5Symbol, volume, sl, tp, options)
+        ? await conn.createMarketBuyOrder(mt5Symbol, volume, sl, tp, opts)
+        : await conn.createMarketSellOrder(mt5Symbol, volume, sl, tp, opts)
 
       log(`✓ Pushed via ${mt5Symbol}: orderId=${result?.orderId} positionId=${result?.positionId} stringCode=${result?.stringCode}`)
       return {
@@ -338,7 +369,17 @@ export async function pushTrade(trade, user) {
     } catch (err) {
       const desc = describeError(err)
       lastDesc = desc
-      attempts.push({ symbol: mt5Symbol, error: desc.summary })
+      attempts.push({ symbol: mt5Symbol, error: desc.summary, commentUsed: !dropComment })
+
+      // ClientId/pattern rejection from the broker — strip comment too and
+      // retry the SAME symbol once before moving on. We don't loop forever:
+      // dropComment latches.
+      if (!dropComment && looksLikeClientIdError(desc)) {
+        warn(`Broker rejected clientId/pattern on ${mt5Symbol} — retrying with no comment either`)
+        dropComment = true
+        i--  // re-run same candidate index
+        continue
+      }
 
       if (!looksLikeSymbolError(desc) || i === candidates.length - 1) {
         // Either this is a non-symbol error (margin / market closed / lot size)
@@ -350,7 +391,8 @@ export async function pushTrade(trade, user) {
           error: desc.summary,
           errorDetails: desc,
           symbolSent: mt5Symbol,
-          symbolAttempts: attempts
+          symbolAttempts: attempts,
+          commentDropped: dropComment
         }
       }
       warn(`Symbol "${mt5Symbol}" rejected (${desc.summary}); trying next candidate...`)
@@ -362,7 +404,8 @@ export async function pushTrade(trade, user) {
     success: false,
     error: lastDesc?.summary || 'All symbol candidates exhausted',
     errorDetails: lastDesc,
-    symbolAttempts: attempts
+    symbolAttempts: attempts,
+    commentDropped: dropComment
   }
 }
 
