@@ -63,6 +63,14 @@ let isConnected = false
 let isConnecting = false
 let lastError = null
 
+// Cache of symbols the broker actually lists. Populated lazily on first
+// push, refreshed every 30 minutes. Knowing the real list lets us pick the
+// broker's exact gold/silver/crypto name (e.g. "XAUUSD.r", "GOLD#", "ATOMUSDT.m")
+// instead of guessing through a candidate list and burning round-trips.
+let brokerSymbolsCache = null
+let brokerSymbolsCacheAt = 0
+const BROKER_SYMBOLS_TTL_MS = 30 * 60 * 1000
+
 // Circuit breaker — prevent runaway reconnect loops when MetaAPI is down.
 // The SDK has its own ~1.5s reconnect that spams logs when MetaAPI returns
 // 503 / network is flaky. We wrap with exponential backoff and stop trying
@@ -323,6 +331,80 @@ async function ensureConnected() {
 }
 
 /**
+ * Fetch (and cache) the list of symbols the broker actually has listed.
+ * MetaAPI exposes this via connection.getSymbols(). We cache for 30 min so
+ * every push doesn't pay the round-trip. On failure we return whatever we
+ * have cached (possibly empty) so the caller can fall back to guess mode.
+ */
+async function getBrokerSymbols(conn, { force = false } = {}) {
+  if (!force && brokerSymbolsCache && Date.now() - brokerSymbolsCacheAt < BROKER_SYMBOLS_TTL_MS) {
+    return brokerSymbolsCache
+  }
+  try {
+    const list = await conn.getSymbols()
+    if (Array.isArray(list) && list.length > 0) {
+      brokerSymbolsCache = list
+      brokerSymbolsCacheAt = Date.now()
+      log(`Loaded ${list.length} broker symbols (first 5: ${list.slice(0, 5).join(', ')})`)
+    }
+  } catch (err) {
+    warn(`getSymbols() failed: ${err.message} — falling back to candidate guessing`)
+  }
+  return brokerSymbolsCache || []
+}
+
+/**
+ * Pick the best broker symbol for a BlueStone canonical symbol, using the
+ * cached broker symbol list. Strategy:
+ *   1. Exact match against our candidate list (alias+suffix, canonical+suffix, USDT, ...).
+ *   2. Fuzzy match: broker symbols starting with the canonical base (e.g.
+ *      "XAU" for XAUUSD), preferring the shortest (least decorated) match.
+ *   3. No match → return { mode: 'none' } so caller can fail with a clear
+ *      "broker doesn't list this instrument" message instead of guessing.
+ *
+ * If the broker symbol list is unavailable we fall back to { mode: 'guess' }
+ * — the legacy candidate-loop behaviour.
+ */
+function pickBrokerSymbol(canonical, brokerSymbols) {
+  const candidates = getSymbolCandidates(canonical)
+
+  if (!brokerSymbols || brokerSymbols.length === 0) {
+    return { mode: 'guess', candidates }
+  }
+
+  const set = new Set(brokerSymbols)
+
+  // 1. Exact match against our pre-built candidate order
+  const matched = candidates.filter(c => set.has(c))
+  if (matched.length > 0) {
+    return { mode: 'matched', candidates: matched }
+  }
+
+  // 2. Fuzzy by base: strip trailing USD/USDT/T (so XAUUSD → XAU, ATOMUSDT → ATOM)
+  const upper = canonical.toUpperCase()
+  const base = upper.replace(/USDT?$/, '')
+  const fuzzy = []
+  if (base.length >= 3) {
+    // Prefer prefix matches — broker symbols that START with the base.
+    // Sort by length ascending so we try the simplest form first.
+    const prefixMatches = brokerSymbols
+      .filter(s => s.toUpperCase().startsWith(base))
+      .sort((a, b) => a.length - b.length)
+    fuzzy.push(...prefixMatches)
+  }
+  if (fuzzy.length > 0) {
+    return { mode: 'fuzzy', candidates: fuzzy.slice(0, 5) }
+  }
+
+  // 3. Nothing resembling this symbol. Return a small sample for diagnostics.
+  const prefix2 = base.slice(0, 2)
+  const sample = prefix2.length === 2
+    ? brokerSymbols.filter(s => s.toUpperCase().startsWith(prefix2)).slice(0, 10)
+    : brokerSymbols.slice(0, 10)
+  return { mode: 'none', candidates: [], sample }
+}
+
+/**
  * Push a BlueStone trade to MT5. Returns { success, mt5PositionId, mt5OrderId, mt5Symbol, error }.
  * Does NOT throw on push failure — caller persists FAILED state on the trade.
  *
@@ -369,10 +451,31 @@ export async function pushTrade(trade, user) {
     slippage: DEFAULT_SLIPPAGE
   }
 
-  const candidates = getSymbolCandidates(trade.symbol)
+  // Pull the broker's actual symbol list (cached 30 min) and pick which
+  // candidate(s) to try. When the broker list is available we only attempt
+  // symbols that genuinely exist on the venue — no more burning round-trips
+  // on guesses like "GOLD" when the broker only has "XAUUSD.r".
+  const brokerSymbols = await getBrokerSymbols(conn)
+  const pick = pickBrokerSymbol(trade.symbol, brokerSymbols)
+
+  if (pick.mode === 'none') {
+    const hint = pick.sample.length
+      ? ` Broker has these similar listings: ${pick.sample.join(', ')}`
+      : ''
+    error(`Broker has no listing matching ${trade.symbol} — declining to guess.${hint}`)
+    return {
+      success: false,
+      error: `Broker has no listing for ${trade.symbol}.${hint}`,
+      symbolSent: null,
+      brokerSample: pick.sample
+    }
+  }
+
+  const candidates = pick.candidates
   if (candidates.length === 0) {
     return { success: false, error: `No MT5 symbol candidates for ${trade.symbol}` }
   }
+  log(`Symbol pick mode=${pick.mode} for ${trade.symbol} → trying ${candidates.join(', ')}`)
 
   const isBuy = trade.side?.toUpperCase() === 'BUY'
   const attempts = []
