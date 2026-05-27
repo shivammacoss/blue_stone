@@ -355,15 +355,21 @@ async function getBrokerSymbols(conn, { force = false } = {}) {
 
 /**
  * Pick the best broker symbol for a BlueStone canonical symbol, using the
- * cached broker symbol list. Strategy:
- *   1. Exact match against our candidate list (alias+suffix, canonical+suffix, USDT, ...).
- *   2. Fuzzy match: broker symbols starting with the canonical base (e.g.
- *      "XAU" for XAUUSD), preferring the shortest (least decorated) match.
- *   3. No match → return { mode: 'none' } so caller can fail with a clear
- *      "broker doesn't list this instrument" message instead of guessing.
+ * cached broker symbol list.
  *
- * If the broker symbol list is unavailable we fall back to { mode: 'guess' }
- * — the legacy candidate-loop behaviour.
+ * Quote-currency safety: fuzzy matching only accepts broker symbols that
+ * begin with the FULL canonical (e.g. "XAUUSD*") or with an aliased name
+ * ("GOLD*") — never a base-only prefix like "XAU*". This is critical:
+ * matching "XAU*" loosely would push XAUUSD trades into XAUEUR / XAUAUD,
+ * which are entirely different instruments with their own price behaviour.
+ *
+ * Crypto fallback: when the canonical is a *USD crypto pair (BTCUSD,
+ * ATOMUSD, ...) and no XYZUSD* listing exists, we also accept XYZUSDT* —
+ * USDT is dollar-pegged so the hedge stays correct enough for our purpose.
+ * Forex (EURUSD) and metals (XAU/XAG) are excluded from this fallback.
+ *
+ * If the broker symbol list is unavailable we return { mode: 'guess' } so
+ * the caller falls back to legacy candidate-loop behaviour.
  */
 function pickBrokerSymbol(canonical, brokerSymbols) {
   const candidates = getSymbolCandidates(canonical)
@@ -380,27 +386,48 @@ function pickBrokerSymbol(canonical, brokerSymbols) {
     return { mode: 'matched', candidates: matched }
   }
 
-  // 2. Fuzzy by base: strip trailing USD/USDT/T (so XAUUSD → XAU, ATOMUSDT → ATOM)
+  // 2. Fuzzy prefix match — but ONLY against the full canonical or its
+  //    explicit alias. This preserves the quote currency: XAUUSD will
+  //    accept XAUUSD.r / XAUUSDpro / GOLD.r / GOLDmicro, but reject
+  //    XAUEUR / XAUAUD.
   const upper = canonical.toUpperCase()
-  const base = upper.replace(/USDT?$/, '')
+  const allowedPrefixes = [upper]
+  const alias = REVERSE_ALIASES[upper]
+  if (alias) allowedPrefixes.push(alias.toUpperCase())
+
   const fuzzy = []
-  if (base.length >= 3) {
-    // Prefer prefix matches — broker symbols that START with the base.
-    // Sort by length ascending so we try the simplest form first.
-    const prefixMatches = brokerSymbols
-      .filter(s => s.toUpperCase().startsWith(base))
-      .sort((a, b) => a.length - b.length)
-    fuzzy.push(...prefixMatches)
+  for (const prefix of allowedPrefixes) {
+    const matches = brokerSymbols
+      .filter(s => s.toUpperCase().startsWith(prefix))
+      .sort((a, b) => a.length - b.length)  // simplest form first
+    fuzzy.push(...matches)
   }
-  if (fuzzy.length > 0) {
-    return { mode: 'fuzzy', candidates: fuzzy.slice(0, 5) }
+  const fuzzyUnique = [...new Set(fuzzy)]
+  if (fuzzyUnique.length > 0) {
+    return { mode: 'fuzzy', candidates: fuzzyUnique.slice(0, 5) }
   }
 
-  // 3. Nothing resembling this symbol. Return a small sample for diagnostics.
-  const prefix2 = base.slice(0, 2)
-  const sample = prefix2.length === 2
-    ? brokerSymbols.filter(s => s.toUpperCase().startsWith(prefix2)).slice(0, 10)
-    : brokerSymbols.slice(0, 10)
+  // 3. Crypto USDT fallback: XYZUSD → accept XYZUSDT* (USDT ≈ USD).
+  //    Forex / metals skipped — they have their own correct quote currencies.
+  if (upper.endsWith('USD') && upper.length >= 6) {
+    const base = upper.slice(0, -3)
+    if (!FOREX_QUOTES.has(base) && !METAL_BASES.has(base)) {
+      const usdtPrefix = base + 'USDT'
+      const usdtMatches = brokerSymbols
+        .filter(s => s.toUpperCase().startsWith(usdtPrefix))
+        .sort((a, b) => a.length - b.length)
+      if (usdtMatches.length > 0) {
+        return { mode: 'fuzzy-usdt', candidates: usdtMatches.slice(0, 3) }
+      }
+    }
+  }
+
+  // 4. Nothing safely matchable. Return a small sample for diagnostics —
+  //    symbols that share the first 3 chars of the canonical (caller sees
+  //    "you asked for XAUUSD but broker has XAUEUR, XAUAUD, XAG..." instead
+  //    of being silently routed into the wrong instrument).
+  const head = upper.slice(0, 3)
+  const sample = brokerSymbols.filter(s => s.toUpperCase().startsWith(head)).slice(0, 10)
   return { mode: 'none', candidates: [], sample }
 }
 
