@@ -38,9 +38,23 @@ const DEFAULT_SLIPPAGE = parseInt(process.env.MT5_DEFAULT_SLIPPAGE || '10', 10)
 const REVERSE_ALIASES = {
   XAUUSD: 'GOLD',
   XAGUSD: 'SILVER',
+  XPTUSD: 'PLATINUM',
+  XPDUSD: 'PALLADIUM',
   BTCUSD: 'BITCOIN',
-  ETHUSD: 'ETHEREUM'
+  ETHUSD: 'ETHEREUM',
+  LTCUSD: 'LITECOIN',
+  XRPUSD: 'RIPPLE'
 }
+
+// Forex quote currencies — used to recognise "EURUSD"-shaped symbols so we
+// don't accidentally treat them as crypto pairs and try USDT variants.
+const FOREX_QUOTES = new Set([
+  'EUR','GBP','JPY','AUD','NZD','CAD','CHF','SGD','HKD','MXN','TRY','ZAR',
+  'SEK','NOK','DKK','PLN','HUF','RUB','CNY','CZK','ILS','THB','KRW','INR'
+])
+
+// Commodity / metal bases — same exclusion purpose.
+const METAL_BASES = new Set(['XAU','XAG','XPT','XPD'])
 
 let api = null
 let account = null
@@ -124,9 +138,14 @@ export function mapSymbolToMt5(canonical) {
 /**
  * Build an ordered list of MT5 symbol candidates to try for one BlueStone
  * canonical symbol. Brokers name silver / gold / crypto wildly differently
- * (SILVER, XAGUSD, XAGUSD.r, SILVERm, ...), so on push failure we walk this
- * list before giving up. First entry is the preferred mapping (alias + suffix),
- * subsequent entries are progressively looser fallbacks. Order matters.
+ * (SILVER, XAGUSD, XAGUSD.r, SILVERm, ATOMUSDT, ...), so on push failure we
+ * walk this list before giving up. First entry is the preferred mapping
+ * (alias + suffix), subsequent entries are progressively looser fallbacks.
+ *
+ * Crypto note: BlueStone quotes crypto vs USD (Coinbase feed) but most MT5
+ * brokers list crypto vs USDT. For any non-forex, non-metal *USD symbol we
+ * also try the USDT-quoted variant so ATOMUSD → ATOMUSDT, SOLUSD → SOLUSDT
+ * etc. just work out of the box.
  */
 export function getSymbolCandidates(canonical) {
   if (!canonical) return []
@@ -135,6 +154,7 @@ export function getSymbolCandidates(canonical) {
   const ordered = []
   const seen = new Set()
   const push = (s) => { if (s && !seen.has(s)) { seen.add(s); ordered.push(s) } }
+
   const alias = REVERSE_ALIASES[upper]
   if (alias) {
     push(alias + suf)
@@ -142,6 +162,21 @@ export function getSymbolCandidates(canonical) {
   }
   push(upper + suf)
   push(upper)
+
+  // Crypto USDT fallback. Only applies when the symbol ends in USD and isn't
+  // already a forex or metal pair — those have their own listings and a USDT
+  // substitution would be wrong.
+  if (upper.endsWith('USD') && upper.length >= 6) {
+    const base = upper.slice(0, -3)
+    if (!FOREX_QUOTES.has(base) && !METAL_BASES.has(base)) {
+      push(base + 'USDT' + suf)
+      push(base + 'USDT')
+      // Some brokers drop the quote currency entirely (e.g. plain "ATOM").
+      push(base + suf)
+      push(base)
+    }
+  }
+
   return ordered
 }
 
