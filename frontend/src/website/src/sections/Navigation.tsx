@@ -240,11 +240,11 @@ export default function Navigation({ scrollY }: NavigationProps) {
               <a
                 href={apkUrl}
                 download="BlueStone.apk"
-                className="flex items-center gap-1.5 text-sm font-medium text-white/80 hover:text-white transition-colors duration-400"
+                className="flex items-center gap-1.5 text-sm font-semibold text-bluestone-light hover:text-bluestone-accent transition-colors duration-400"
                 title="Download Android APK"
               >
-                <Download size={16} />
-                APK
+                <Download size={16} className="animate-bounce" />
+                App
               </a>
               <button
                 onClick={() => navigate('/user/login')}
@@ -270,9 +270,10 @@ export default function Navigation({ scrollY }: NavigationProps) {
           </div>
         </div>
 
-        {/* Mobile Menu */}
+        {/* Mobile Menu — fully opaque blue gradient so the hero content
+            behind doesn't bleed through when the menu is open. */}
         <div
-          className={`lg:hidden absolute top-full left-0 right-0 bg-bluestone-deep/98 backdrop-blur-xl border-b border-white/10 transition-all duration-500 ${
+          className={`lg:hidden absolute top-full left-0 right-0 bg-gradient-to-b from-bluestone-deep via-bluestone-dark to-bluestone-deep border-b border-white/10 shadow-2xl transition-all duration-500 ${
             isMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
           }`}
           style={{ transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
@@ -304,7 +305,7 @@ export default function Navigation({ scrollY }: NavigationProps) {
                 className="w-full py-3 text-center text-white/80 border border-white/20 rounded-xl hover:bg-white/5 transition-colors duration-400 flex items-center justify-center gap-2"
               >
                 <Download size={18} />
-                Download APK
+                Download App
               </a>
               <button
                 onClick={() => { setIsMenuOpen(false); navigate('/user/login'); }}
