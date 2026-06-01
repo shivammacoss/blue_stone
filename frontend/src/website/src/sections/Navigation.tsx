@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Download } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+// APK lives in frontend/src/apk/ — Vite serves it via assetsInclude in vite.config.js
+// and writes a hashed copy into dist/ at build time.
+import apkUrl from '../../../apk/bluestone_apk.apk?url';
 
 interface NavigationProps {
   scrollY: number;
@@ -234,13 +237,22 @@ export default function Navigation({ scrollY }: NavigationProps) {
                 transition: 'opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.3s, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.3s',
               }}
             >
-              <button 
+              <a
+                href={apkUrl}
+                download="BlueStone.apk"
+                className="flex items-center gap-1.5 text-sm font-medium text-white/80 hover:text-white transition-colors duration-400"
+                title="Download Android APK"
+              >
+                <Download size={16} />
+                APK
+              </a>
+              <button
                 onClick={() => navigate('/user/login')}
                 className="text-sm font-medium text-white/80 hover:text-white transition-colors duration-400"
               >
                 Login
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/user/signup')}
                 className="btn-primary text-sm py-2.5 px-5 animate-pulse-glow"
               >
@@ -285,13 +297,22 @@ export default function Navigation({ scrollY }: NavigationProps) {
               </a>
             ))}
             <div className="pt-4 flex flex-col gap-3">
-              <button 
+              <a
+                href={apkUrl}
+                download="BlueStone.apk"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full py-3 text-center text-white/80 border border-white/20 rounded-xl hover:bg-white/5 transition-colors duration-400 flex items-center justify-center gap-2"
+              >
+                <Download size={18} />
+                Download APK
+              </a>
+              <button
                 onClick={() => { setIsMenuOpen(false); navigate('/user/login'); }}
                 className="w-full py-3 text-center text-white/80 border border-white/20 rounded-xl hover:bg-white/5 transition-colors duration-400"
               >
                 Login
               </button>
-              <button 
+              <button
                 onClick={() => { setIsMenuOpen(false); navigate('/user/signup'); }}
                 className="w-full py-3 text-center btn-primary"
               >
