@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/AdminLayout'
-import { 
+import {
   Users,
   TrendingUp,
   Wallet,
@@ -11,6 +12,7 @@ import {
 import { API_URL } from '../config/api'
 
 const AdminOverview = () => {
+  const navigate = useNavigate()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
@@ -69,30 +71,37 @@ const AdminOverview = () => {
     })
   }
 
+  // Each card's `to` (if present) deep-links into the matching filtered page.
+  // Users-cards filter the user table; deposit/withdrawal cards filter the
+  // transactions page by type so admin sees exactly the rows backing the total.
   const statCards = [
-    { 
-      title: 'Total Users', 
-      value: stats.totalUsers, 
-      icon: Users, 
-      color: 'blue'
+    {
+      title: 'Total Users',
+      value: stats.totalUsers,
+      icon: Users,
+      color: 'blue',
+      to: '/admin/users'
     },
-    { 
-      title: 'New This Week', 
-      value: stats.newThisWeek, 
-      icon: TrendingUp, 
-      color: 'green'
+    {
+      title: 'New This Week',
+      value: stats.newThisWeek,
+      icon: TrendingUp,
+      color: 'green',
+      to: '/admin/users?range=week'
     },
-    { 
-      title: 'Total Deposits', 
-      value: `$${stats.totalDeposits.toLocaleString()}`, 
-      icon: Wallet, 
-      color: 'purple'
+    {
+      title: 'Total Deposits',
+      value: `$${stats.totalDeposits.toLocaleString()}`,
+      icon: Wallet,
+      color: 'purple',
+      to: '/admin/transactions?filter=deposits'
     },
-    { 
-      title: 'Total Withdrawals', 
-      value: `$${stats.totalWithdrawals.toLocaleString()}`, 
-      icon: CreditCard, 
-      color: 'orange'
+    {
+      title: 'Total Withdrawals',
+      value: `$${stats.totalWithdrawals.toLocaleString()}`,
+      icon: CreditCard,
+      color: 'orange',
+      to: '/admin/transactions?filter=withdrawals'
     },
   ]
 
@@ -101,7 +110,12 @@ const AdminOverview = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {statCards.map((stat, index) => (
-          <div key={index} className="bg-dark-800 rounded-xl p-5 border border-gray-800">
+          <button
+            key={index}
+            type="button"
+            onClick={() => stat.to && navigate(stat.to)}
+            className="bg-dark-800 rounded-xl p-5 border border-gray-800 text-left hover:border-gray-700 hover:bg-dark-700 transition-colors w-full"
+          >
             <div className="flex items-center justify-between mb-3">
               <div className={`w-10 h-10 bg-${stat.color}-500/20 rounded-lg flex items-center justify-center`}>
                 <stat.icon size={20} className={`text-${stat.color}-500`} />
@@ -109,7 +123,7 @@ const AdminOverview = () => {
             </div>
             <p className="text-gray-500 text-sm mb-1">{stat.title}</p>
             <p className="text-white text-2xl font-bold">{stat.value}</p>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -154,11 +168,17 @@ const AdminOverview = () => {
           </div>
         </div>
 
-        {/* Quick Stats */}
+        {/* Quick Stats — each row is a deep-link into the matching admin
+            page with the filter pre-applied. We use URL query params (not
+            location state) so the filter survives refresh and can be shared. */}
         <div className="bg-dark-800 rounded-xl p-5 border border-gray-800">
           <h2 className="text-white font-semibold mb-4">Platform Overview</h2>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-dark-700 rounded-lg">
+            <button
+              type="button"
+              onClick={() => navigate('/admin/users?range=week')}
+              className="w-full flex items-center justify-between p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors text-left"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
                   <Users size={18} className="text-blue-500" />
@@ -166,8 +186,12 @@ const AdminOverview = () => {
                 <span className="text-gray-400">New Users This Week</span>
               </div>
               <span className="text-white font-semibold">{stats.newThisWeek}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-dark-700 rounded-lg">
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/kyc?status=pending')}
+              className="w-full flex items-center justify-between p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors text-left"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
                   <Calendar size={18} className="text-yellow-500" />
@@ -175,8 +199,12 @@ const AdminOverview = () => {
                 <span className="text-gray-400">Pending KYC</span>
               </div>
               <span className="text-white font-semibold">{stats.pendingKYC}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-dark-700 rounded-lg">
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/trades?status=OPEN')}
+              className="w-full flex items-center justify-between p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors text-left"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
                   <TrendingUp size={18} className="text-green-500" />
@@ -184,8 +212,12 @@ const AdminOverview = () => {
                 <span className="text-gray-400">Active Trades</span>
               </div>
               <span className="text-white font-semibold">{stats.activeTrades}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-dark-700 rounded-lg">
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/transactions?filter=pending-withdrawals')}
+              className="w-full flex items-center justify-between p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors text-left"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                   <Wallet size={18} className="text-purple-500" />
@@ -193,7 +225,7 @@ const AdminOverview = () => {
                 <span className="text-gray-400">Pending Withdrawals</span>
               </div>
               <span className="text-white font-semibold">{stats.pendingWithdrawals}</span>
-            </div>
+            </button>
           </div>
         </div>
       </div>

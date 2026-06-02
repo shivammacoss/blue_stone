@@ -1,43 +1,32 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import toast from 'react-hot-toast'
-import { 
-  LayoutDashboard, 
-  Users,
-  LogOut,
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import {
   Check,
   X,
   RefreshCw,
-  CreditCard,
-  Settings,
   ArrowDownCircle,
-  ArrowUpCircle,
-  Clock,
-  XCircle
+  ArrowUpCircle
 } from 'lucide-react'
 import { API_URL } from '../config/api'
+import AdminLayout from '../components/AdminLayout'
 
 const AdminTransactions = () => {
   const navigate = useNavigate()
-  const [activeMenu, setActiveMenu] = useState('Transactions')
-  const [sidebarExpanded, setSidebarExpanded] = useState(false)
+  const [searchParams] = useSearchParams()
+  // Accept ?filter=… from the Overview "Pending Withdrawals" card. The
+  // value 'pending-withdrawals' is new and is handled in the row filter
+  // below as `status === 'Pending' && type === 'Withdrawal'`.
+  const validFilters = ['all', 'pending', 'deposits', 'withdrawals', 'pending-withdrawals']
+  const urlFilter = searchParams.get('filter')
+  const initialFilter = validFilters.includes(urlFilter) ? urlFilter : 'all'
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [error, setError] = useState('')
+  const [filter, setFilter] = useState(initialFilter)
   const [success, setSuccess] = useState('')
   const [showRemarkModal, setShowRemarkModal] = useState(false)
   const [selectedTx, setSelectedTx] = useState(null)
   const [actionType, setActionType] = useState('')
   const [adminRemarks, setAdminRemarks] = useState('')
-
-  const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
-    { name: 'User Management', icon: Users, path: '/admin/dashboard' },
-    { name: 'Account Types', icon: CreditCard, path: '/admin/account-types' },
-    { name: 'Transactions', icon: Settings, path: '/admin/transactions' },
-    { name: 'Payment Methods', icon: Settings, path: '/admin/payment-methods' },
-  ]
 
   useEffect(() => {
     const adminToken = localStorage.getItem('adminToken')
@@ -75,7 +64,7 @@ const AdminTransactions = () => {
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (error) {
-      setError('Error processing transaction')
+      console.error('Error processing transaction:', error)
     }
   }
 
@@ -84,107 +73,82 @@ const AdminTransactions = () => {
     if (filter === 'pending') return tx.status === 'Pending'
     if (filter === 'deposits') return tx.type === 'Deposit'
     if (filter === 'withdrawals') return tx.type === 'Withdrawal'
+    // Combined filter from the AdminOverview "Pending Withdrawals" card.
+    if (filter === 'pending-withdrawals') return tx.status === 'Pending' && tx.type === 'Withdrawal'
     return true
   })
 
   const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-  const handleLogout = () => {
-    localStorage.removeItem('adminToken')
-    localStorage.removeItem('adminUser')
-    toast.success('Logged out successfully!')
-    navigate('/admin')
-  }
-
   return (
-    <div className="min-h-screen bg-dark-900 flex">
-      <aside className={`${sidebarExpanded ? 'w-52' : 'w-16'} bg-dark-900 border-r border-gray-800 flex flex-col transition-all duration-300`} onMouseEnter={() => setSidebarExpanded(true)} onMouseLeave={() => setSidebarExpanded(false)}>
-        <div className="p-4 flex items-center justify-center gap-2">
-          <div className="w-8 h-8 bg-red-500 rounded flex items-center justify-center"><span className="text-white font-bold text-sm">A</span></div>
-          {sidebarExpanded && <span className="text-white font-semibold">Admin</span>}
-        </div>
-        <nav className="flex-1 px-2">
-          {menuItems.map((item) => (
-            <button key={item.name} onClick={() => navigate(item.path)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors ${activeMenu === item.name ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white' : 'text-gray-400 hover:text-white hover:bg-dark-700'}`}>
-              <item.icon size={18} className="flex-shrink-0" />
-              {sidebarExpanded && <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="p-2 border-t border-gray-800">
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-white transition-colors rounded-lg">
-            <LogOut size={18} />
-            {sidebarExpanded && <span className="text-sm font-medium">Log Out</span>}
+    <AdminLayout title="Transactions" subtitle="Manage deposits & withdrawals">
+      {/* Filter chips */}
+      <div className="flex gap-2 flex-wrap mb-4">
+        {['all', 'pending', 'deposits', 'withdrawals', 'pending-withdrawals'].map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-4 py-2 rounded-lg text-sm capitalize whitespace-nowrap ${filter === f ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white' : 'bg-dark-700 text-gray-400 hover:text-white'}`}
+          >
+            {f.replace('-', ' ')}
           </button>
+        ))}
+      </div>
+
+      {success && (
+        <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center gap-2 text-white">
+          <Check size={18} /> {success}
         </div>
-      </aside>
+      )}
 
-      <main className="flex-1 overflow-auto">
-        <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-          <div>
-            <h1 className="text-xl font-semibold text-white">Transactions</h1>
-            <p className="text-gray-500 text-sm">Manage deposits & withdrawals</p>
-          </div>
-          <div className="flex gap-2">
-            {['all', 'pending', 'deposits', 'withdrawals'].map(f => (
-              <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-lg text-sm capitalize ${filter === f ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white' : 'bg-dark-700 text-gray-400'}`}>{f}</button>
-            ))}
-          </div>
-        </header>
-
-        <div className="p-6">
-          {success && <div className="mb-4 p-3 bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center gap-2"><Check size={18} /> {success}</div>}
-          
-          <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">User</th>
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Type</th>
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Amount</th>
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Method</th>
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Status</th>
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Date</th>
-                  <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Actions</th>
+      <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-700">
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">User</th>
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Type</th>
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Amount</th>
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Method</th>
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Status</th>
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Date</th>
+              <th className="text-left text-gray-500 text-sm font-medium py-3 px-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan="7" className="text-center py-8"><RefreshCw size={24} className="text-gray-500 animate-spin mx-auto" /></td></tr>
+            ) : filteredTransactions.length === 0 ? (
+              <tr><td colSpan="7" className="text-center py-8 text-gray-500">No transactions found</td></tr>
+            ) : (
+              filteredTransactions.map((tx) => (
+                <tr key={tx._id} className="border-b border-gray-800">
+                  <td className="py-4 px-4 text-white">{tx.userId?.firstName || tx.userId?.email || 'Unknown'}</td>
+                  <td className="py-4 px-4">
+                    <div className="flex items-center gap-2">
+                      {tx.type === 'Deposit' ? <ArrowDownCircle size={16} className="text-green-500" /> : <ArrowUpCircle size={16} className="text-red-500" />}
+                      <span className="text-white">{tx.type}</span>
+                    </div>
+                  </td>
+                  <td className={`py-4 px-4 font-medium ${tx.type === 'Deposit' ? 'text-green-500' : 'text-red-500'}`}>${tx.amount}</td>
+                  <td className="py-4 px-4 text-gray-400">{tx.paymentMethod}</td>
+                  <td className="py-4 px-4">
+                    <span className={`px-2 py-1 rounded text-xs ${tx.status === 'Approved' ? 'bg-green-500/20 text-green-500' : tx.status === 'Rejected' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'}`}>{tx.status}</span>
+                  </td>
+                  <td className="py-4 px-4 text-gray-400 text-sm">{formatDate(tx.createdAt)}</td>
+                  <td className="py-4 px-4">
+                    {tx.status === 'Pending' && (
+                      <div className="flex gap-2">
+                        <button onClick={() => { setSelectedTx(tx); setActionType('approve'); setShowRemarkModal(true); }} className="p-2 bg-green-500/20 text-green-500 rounded hover:bg-green-500/30"><Check size={14} /></button>
+                        <button onClick={() => { setSelectedTx(tx); setActionType('reject'); setShowRemarkModal(true); }} className="p-2 bg-red-500/20 text-red-500 rounded hover:bg-red-500/30"><X size={14} /></button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="7" className="text-center py-8"><RefreshCw size={24} className="text-gray-500 animate-spin mx-auto" /></td></tr>
-                ) : filteredTransactions.length === 0 ? (
-                  <tr><td colSpan="7" className="text-center py-8 text-gray-500">No transactions found</td></tr>
-                ) : (
-                  filteredTransactions.map((tx) => (
-                    <tr key={tx._id} className="border-b border-gray-800">
-                      <td className="py-4 px-4 text-white">{tx.userId?.firstName || tx.userId?.email || 'Unknown'}</td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-2">
-                          {tx.type === 'Deposit' ? <ArrowDownCircle size={16} className="text-green-500" /> : <ArrowUpCircle size={16} className="text-red-500" />}
-                          <span className="text-white">{tx.type}</span>
-                        </div>
-                      </td>
-                      <td className={`py-4 px-4 font-medium ${tx.type === 'Deposit' ? 'text-green-500' : 'text-red-500'}`}>${tx.amount}</td>
-                      <td className="py-4 px-4 text-gray-400">{tx.paymentMethod}</td>
-                      <td className="py-4 px-4">
-                        <span className={`px-2 py-1 rounded text-xs ${tx.status === 'Approved' ? 'bg-green-500/20 text-green-500' : tx.status === 'Rejected' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'}`}>{tx.status}</span>
-                      </td>
-                      <td className="py-4 px-4 text-gray-400 text-sm">{formatDate(tx.createdAt)}</td>
-                      <td className="py-4 px-4">
-                        {tx.status === 'Pending' && (
-                          <div className="flex gap-2">
-                            <button onClick={() => { setSelectedTx(tx); setActionType('approve'); setShowRemarkModal(true); }} className="p-2 bg-green-500/20 text-green-500 rounded hover:bg-green-500/30"><Check size={14} /></button>
-                            <button onClick={() => { setSelectedTx(tx); setActionType('reject'); setShowRemarkModal(true); }} className="p-2 bg-red-500/20 text-red-500 rounded hover:bg-red-500/30"><X size={14} /></button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </main>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {showRemarkModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -200,7 +164,7 @@ const AdminTransactions = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   )
 }
 

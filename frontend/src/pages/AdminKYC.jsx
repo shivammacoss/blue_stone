@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AdminLayout from '../components/AdminLayout'
 import { 
   FileCheck,
@@ -15,9 +16,31 @@ import {
 import { API_URL, API_BASE_URL } from '../config/api'
 import toast from 'react-hot-toast'
 
+// Normalise a KYC image reference to something an <img src> can actually load.
+// KYC submissions arrive in three shapes depending on which endpoint the user
+// hit:
+//   • base64 data URI   ("data:image/jpeg;base64,…")     — /kyc/submit (JSON)
+//   • absolute URL      ("https://…")                    — CDN-backed setups
+//   • relative path     ("/uploads/kyc/abc.jpg")         — /kyc/submit-files
+// The previous admin code only handled the last two, so data URIs got
+// prefixed with API_BASE_URL and produced broken URLs like
+// "https://api.bluestoneexchange.com/data:image/jpeg;base64,…".
+const resolveImg = (img) => {
+  if (!img) return ''
+  if (img.startsWith('data:') || img.startsWith('http://') || img.startsWith('https://') || img.startsWith('blob:')) return img
+  return `${API_BASE_URL}${img}`
+}
+
 const AdminKYC = () => {
+  const [searchParams] = useSearchParams()
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all')
+  // ?status=pending|approved|rejected from the Overview "Pending KYC" card
+  // pre-applies the filter so the admin lands on exactly the rows they
+  // expected to see. Falls back to 'all' for direct sidebar navigation.
+  const initialStatus = ['pending', 'approved', 'rejected'].includes(searchParams.get('status'))
+    ? searchParams.get('status')
+    : 'all'
+  const [filterStatus, setFilterStatus] = useState(initialStatus)
   const [kycRequests, setKycRequests] = useState([])
   const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 })
   const [loading, setLoading] = useState(true)
@@ -372,7 +395,7 @@ const AdminKYC = () => {
                   <div>
                     <p className="text-gray-400 text-sm mb-2">Front Side</p>
                     <img 
-                      src={selectedKyc.frontImage.startsWith('http') ? selectedKyc.frontImage : `${API_BASE_URL}${selectedKyc.frontImage}`} 
+                      src={resolveImg(selectedKyc.frontImage)}
                       alt="Front" 
                       className="max-w-full rounded-lg border border-gray-700" 
                     />
@@ -382,7 +405,7 @@ const AdminKYC = () => {
                   <div>
                     <p className="text-gray-400 text-sm mb-2">Back Side</p>
                     <img 
-                      src={selectedKyc.backImage.startsWith('http') ? selectedKyc.backImage : `${API_BASE_URL}${selectedKyc.backImage}`} 
+                      src={resolveImg(selectedKyc.backImage)}
                       alt="Back" 
                       className="max-w-full rounded-lg border border-gray-700" 
                     />
@@ -392,7 +415,7 @@ const AdminKYC = () => {
                   <div>
                     <p className="text-gray-400 text-sm mb-2">Selfie with Document</p>
                     <img 
-                      src={selectedKyc.selfieImage.startsWith('http') ? selectedKyc.selfieImage : `${API_BASE_URL}${selectedKyc.selfieImage}`} 
+                      src={resolveImg(selectedKyc.selfieImage)}
                       alt="Selfie" 
                       className="max-w-full rounded-lg border border-gray-700" 
                     />

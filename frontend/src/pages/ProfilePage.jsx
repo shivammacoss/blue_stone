@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   LayoutDashboard, 
   User,
@@ -50,6 +50,7 @@ import { useLockDocumentScroll } from '../hooks/useLockDocumentScroll'
 const ProfilePage = () => {
   useLockDocumentScroll()
   const navigate = useNavigate()
+  const location = useLocation()
   const { isDarkMode, toggleDarkMode } = useTheme()
   const { t } = useTranslation()
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
@@ -182,7 +183,19 @@ const ProfilePage = () => {
       console.error('Error fetching KYC status:', error)
     }
   }
-  
+
+  // Auto-open the KYC submission form when the user lands here from the
+  // trading KYC gate (Account → Trade → "Complete KYC"). We only open the
+  // form when KYC isn't already approved — if it is, we just stay on the
+  // profile view so users can see their verified status.
+  useEffect(() => {
+    if (!location.state?.openKyc) return
+    if (kycStatus?.status === 'approved') return
+    setShowKycForm(true)
+    // Clear the state so a profile refresh doesn't re-open the form.
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state, kycStatus, navigate, location.pathname])
+
   // Handle file to base64 conversion
   const handleFileChange = (e, field) => {
     const file = e.target.files[0]
@@ -203,6 +216,12 @@ const ProfilePage = () => {
   const handleKycSubmit = async () => {
     if (!kycForm.documentNumber || !kycForm.frontImage) {
       toast.error('Please fill document number and upload front image')
+      return
+    }
+    // Passport is single-sided; everything else (Aadhaar / PAN / DL) has
+    // information on the back too — admin needs both to verify.
+    if (kycForm.documentType !== 'passport' && !kycForm.backImage) {
+      toast.error('Please upload the back side of your document')
       return
     }
     
@@ -878,8 +897,44 @@ const ProfilePage = () => {
                     </div>
                     <div>
                       <label className="text-gray-400 text-sm mb-2 block">Front Side *</label>
-                      <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center">
-                        {kycForm.frontImage ? <img src={kycForm.frontImage} alt="Front" className="max-h-32 mx-auto rounded" /> : <label className="cursor-pointer"><Upload size={32} className="mx-auto text-gray-500 mb-2" /><p className="text-gray-400 text-sm">Click to upload</p><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'frontImage')} className="hidden" /></label>}
+                      <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center relative">
+                        {kycForm.frontImage ? (
+                          <>
+                            <img src={kycForm.frontImage} alt="Front" className="max-h-32 mx-auto rounded" />
+                            <button
+                              type="button"
+                              onClick={() => setKycForm(prev => ({ ...prev, frontImage: '' }))}
+                              className="absolute top-1 right-1 bg-red-500/80 hover:bg-red-600 text-white rounded-full p-1"
+                              title="Remove"
+                            >
+                              <X size={14} />
+                            </button>
+                          </>
+                        ) : (
+                          <label className="cursor-pointer"><Upload size={32} className="mx-auto text-gray-500 mb-2" /><p className="text-gray-400 text-sm">Click to upload</p><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'frontImage')} className="hidden" /></label>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-sm mb-2 block">
+                        Back Side {kycForm.documentType === 'passport' ? '(optional)' : '*'}
+                      </label>
+                      <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center relative">
+                        {kycForm.backImage ? (
+                          <>
+                            <img src={kycForm.backImage} alt="Back" className="max-h-32 mx-auto rounded" />
+                            <button
+                              type="button"
+                              onClick={() => setKycForm(prev => ({ ...prev, backImage: '' }))}
+                              className="absolute top-1 right-1 bg-red-500/80 hover:bg-red-600 text-white rounded-full p-1"
+                              title="Remove"
+                            >
+                              <X size={14} />
+                            </button>
+                          </>
+                        ) : (
+                          <label className="cursor-pointer"><Upload size={32} className="mx-auto text-gray-500 mb-2" /><p className="text-gray-400 text-sm">Click to upload</p><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'backImage')} className="hidden" /></label>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-3">

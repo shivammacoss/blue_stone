@@ -86,12 +86,49 @@ const Account = () => {
   const [success, setSuccess] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [createAccountTab, setCreateAccountTab] = useState('live')
+  // KYC gate state. We only allow opening the trading terminal when KYC is
+  // approved (regulatory + risk requirement). null = not yet fetched, the
+  // gate stays open optimistically until we have a definitive answer so we
+  // don't block users who already passed KYC due to a slow API.
+  const [kycStatus, setKycStatus] = useState(null)
+  const [showKycGate, setShowKycGate] = useState(false)
+  // Demo accounts skip KYC (consistent with broker-wide practice — demos are
+  // funded with paper money so there's no compliance exposure). We track the
+  // pending click so the user doesn't have to re-press Trade after KYC.
+  const [pendingTradeAccount, setPendingTradeAccount] = useState(null)
   
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Fetch KYC status once on mount. Same endpoint shape as ProfilePage/UserHeader.
+  useEffect(() => {
+    const u = JSON.parse(localStorage.getItem('user') || '{}')
+    if (!u._id) return
+    fetch(`${API_URL}/kyc/status/${u._id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data?.hasKYC && data?.kyc) setKycStatus(data.kyc.status)
+        else setKycStatus('none')
+      })
+      .catch(() => setKycStatus('none'))
+  }, [])
+
+  // Gatekeeper invoked by every Trade button. Demo accounts always pass.
+  // Real / Challenge accounts require an APPROVED kyc — pending / rejected /
+  // none all open the gate modal.
+  const handleTradeClick = (account) => {
+    const isDemo = account?.isDemo || account?.accountTypeId?.isDemo
+    if (isDemo || kycStatus === 'approved') {
+      if (isMobile) navigate(`/mobile?account=${account._id}`)
+      else navigate(`/trade/${account._id}`)
+      return
+    }
+    setPendingTradeAccount(account)
+    setShowKycGate(true)
+  }
 
   const tabKeys = challengeModeEnabled ? ['real', 'demo', 'challenge', 'archived'] : ['real', 'demo', 'archived']
   const tabs = tabKeys.map(key => ({ key, label: t(`account.${key}`) }))
@@ -869,7 +906,7 @@ const Account = () => {
                       {/* Action Buttons - Exness Style */}
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => isMobile ? navigate(`/mobile?account=${account._id}`) : navigate(`/trade/${account._id}`)}
+                          onClick={() => handleTradeClick(account)}
                           className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-medium rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-colors"
                         >
                           <TrendingUp size={16} /> Trade
@@ -1590,6 +1627,11 @@ const Account = () => {
                 <button
                   onClick={() => {
                     setShowRulesModal(false)
+                    if (kycStatus !== 'approved') {
+                      setPendingTradeAccount({ ...selectedChallengeAccount, _isChallenge: true })
+                      setShowKycGate(true)
+                      return
+                    }
                     if (isMobile) {
                       navigate(`/mobile?account=${selectedChallengeAccount._id}`)
                     } else {
@@ -1601,6 +1643,75 @@ const Account = () => {
                   I Agree, Start Trading <ArrowRight size={18} />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KYC Gate Modal — blocks trading until KYC is approved. Demo
+          accounts bypass this in handleTradeClick. Real/challenge accounts
+          land here when status is none / pending / rejected. */}
+      {showKycGate && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className={`rounded-2xl w-full max-w-md border ${isDarkMode ? 'bg-dark-800 border-yellow-500/30' : 'bg-white border-yellow-400'}`}>
+            <div className={`p-6 border-b flex items-center justify-between ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                  <Lock size={22} className="text-yellow-500" />
+                </div>
+                <div>
+                  <h3 className={`font-semibold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>KYC Verification Required</h3>
+                  <p className="text-xs text-gray-500">Complete verification to start trading</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowKycGate(false); setPendingTradeAccount(null) }}
+                className={`p-1 rounded ${isDarkMode ? 'text-gray-400 hover:text-white hover:bg-dark-700' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {kycStatus === 'pending' ? (
+                <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                  <p className="text-yellow-500 text-sm font-medium">Your KYC is under review.</p>
+                  <p className="text-gray-400 text-xs mt-1">Trading will be enabled once your documents are approved (usually within 24 hours).</p>
+                </div>
+              ) : kycStatus === 'rejected' ? (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <p className="text-red-500 text-sm font-medium">Your KYC was rejected.</p>
+                  <p className="text-gray-400 text-xs mt-1">Please resubmit your documents to continue.</p>
+                </div>
+              ) : (
+                <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  To comply with regulations, you need to verify your identity before placing live trades. It only takes a minute.
+                </p>
+              )}
+              <ul className={`text-sm space-y-1.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <li className="flex items-start gap-2"><Check size={14} className="text-green-500 mt-0.5 flex-shrink-0" /> Government-issued ID (Aadhaar / PAN / Passport)</li>
+                <li className="flex items-start gap-2"><Check size={14} className="text-green-500 mt-0.5 flex-shrink-0" /> Clear front (and back, if applicable) photos</li>
+                <li className="flex items-start gap-2"><Check size={14} className="text-green-500 mt-0.5 flex-shrink-0" /> Selfie holding your ID</li>
+              </ul>
+            </div>
+            <div className={`p-6 border-t flex gap-3 ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+              <button
+                onClick={() => { setShowKycGate(false); setPendingTradeAccount(null) }}
+                className={`flex-1 py-3 rounded-lg transition-colors ${isDarkMode ? 'bg-dark-700 text-white hover:bg-dark-600' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}
+              >
+                Later
+              </button>
+              <button
+                onClick={() => {
+                  setShowKycGate(false)
+                  // Hand off to ProfilePage with state so the KYC form pops
+                  // open immediately — saves the user an extra click.
+                  navigate('/profile', { state: { openKyc: true } })
+                }}
+                className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-colors flex items-center justify-center gap-2"
+              >
+                {kycStatus === 'rejected' ? 'Resubmit KYC' : kycStatus === 'pending' ? 'View Status' : 'Complete KYC'}
+                <ArrowRight size={18} />
+              </button>
             </div>
           </div>
         </div>

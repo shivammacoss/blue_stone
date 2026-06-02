@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AdminLayout from '../components/AdminLayout'
 import { API_URL } from '../config/api'
 import { 
@@ -29,6 +30,10 @@ import {
 } from 'lucide-react'
 
 const AdminUserManagement = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
+  // ?range=week from the Overview "New Users This Week" card pre-filters the
+  // table to users who signed up in the last 7 days. Default 'all' shows everyone.
+  const [dateRange, setDateRange] = useState(searchParams.get('range') === 'week' ? 'week' : 'all')
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -125,11 +130,30 @@ const AdminUserManagement = () => {
     setActionLoading(false)
   }
 
-  const filteredUsers = users.filter(user => 
-    user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.phone?.includes(searchTerm)
-  )
+  // Apply text search + optional "this week" date filter. Week is the past
+  // 7 calendar days from now, matching how the Overview card counts.
+  const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = (
+      user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.phone?.includes(searchTerm)
+    )
+    if (!matchesSearch) return false
+    if (dateRange === 'week') {
+      const created = user.createdAt ? new Date(user.createdAt).getTime() : 0
+      return created >= weekCutoff
+    }
+    return true
+  })
+
+  const clearDateFilter = () => {
+    setDateRange('all')
+    // Drop ?range= from the URL so a refresh doesn't re-apply it.
+    const next = new URLSearchParams(searchParams)
+    next.delete('range')
+    setSearchParams(next, { replace: true })
+  }
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -1434,10 +1458,25 @@ const AdminUserManagement = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 border-b border-gray-800">
           <div>
-            <h2 className="text-white font-semibold text-lg">All Users</h2>
-            <p className="text-gray-500 text-sm">{users.length} total users</p>
+            <h2 className="text-white font-semibold text-lg">
+              {dateRange === 'week' ? 'New Users This Week' : 'All Users'}
+            </h2>
+            <p className="text-gray-500 text-sm">
+              {dateRange === 'week'
+                ? `${filteredUsers.length} signed up in the last 7 days`
+                : `${users.length} total users`}
+            </p>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {dateRange === 'week' && (
+              <button
+                onClick={clearDateFilter}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg text-sm hover:bg-blue-500/30 transition-colors"
+                title="Show all users"
+              >
+                Filter: This Week <span className="text-blue-300">✕</span>
+              </button>
+            )}
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input

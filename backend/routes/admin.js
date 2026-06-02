@@ -17,15 +17,23 @@ router.get('/dashboard-stats', async (req, res) => {
     const newThisWeek = await User.countDocuments({ createdAt: { $gte: oneWeekAgo } })
     const pendingKYC = await User.countDocuments({ kycStatus: { $in: ['pending', 'Pending', null] } })
     
-    // Get transaction stats (using correct capitalized enum values)
+    // Get transaction stats.
+    // Total Deposits sums every credit landing in the platform: user-initiated
+    // deposits (type 'Deposit') AND admin-initiated wallet/credit top-ups
+    // (Admin_Fund_Add, Admin_Credit_Add). Without this the card stays at $0
+    // whenever ops adds funds manually — the screenshot symptom.
+    const DEPOSIT_TYPES = ['Deposit', 'Admin_Fund_Add', 'Admin_Credit_Add']
+    const WITHDRAWAL_TYPES = ['Withdrawal', 'Admin_Credit_Remove']
     const depositStats = await Transaction.aggregate([
-      { $match: { type: 'Deposit', status: { $in: ['Approved', 'Completed'] } } },
+      { $match: { type: { $in: DEPOSIT_TYPES }, status: { $in: ['Approved', 'Completed'] } } },
       { $group: { _id: null, total: { $sum: '$amount' } } }
     ])
     const withdrawalStats = await Transaction.aggregate([
-      { $match: { type: 'Withdrawal', status: { $in: ['Approved', 'Completed'] } } },
+      { $match: { type: { $in: WITHDRAWAL_TYPES }, status: { $in: ['Approved', 'Completed'] } } },
       { $group: { _id: null, total: { $sum: '$amount' } } }
     ])
+    // Pending withdrawals is still user-initiated only — admin actions are
+    // atomic (created as Completed), they don't sit in a pending queue.
     const pendingWithdrawals = await Transaction.countDocuments({ type: 'Withdrawal', status: 'Pending' })
     
     // Get active trades count

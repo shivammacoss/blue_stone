@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AdminLayout from '../components/AdminLayout'
 import { 
   TrendingUp,
@@ -23,8 +24,14 @@ import { API_URL } from '../config/api'
 import toast from 'react-hot-toast'
 
 const AdminTradeManagement = () => {
+  const [searchParams] = useSearchParams()
+  // ?status=OPEN|CLOSED|PENDING from the Overview "Active Trades" card
+  // pre-applies the filter. The select uses lowercase values internally;
+  // we lowercase here so a direct URL hit lands on the right option.
+  const urlStatus = (searchParams.get('status') || '').toLowerCase()
+  const initialStatus = ['open', 'closed', 'pending'].includes(urlStatus) ? urlStatus : 'all'
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterStatus, setFilterStatus] = useState(initialStatus)
   const [filterAccountType, setFilterAccountType] = useState('all')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
