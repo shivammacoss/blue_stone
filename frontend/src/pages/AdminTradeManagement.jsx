@@ -403,17 +403,18 @@ const AdminTradeManagement = () => {
       if (data.trades) {
         setTrades(data.trades)
         setTotalTrades(data.total || data.trades.length)
-        // Calculate stats
-        const openTrades = data.trades.filter(t => t.status === 'OPEN')
-        const closedTrades = data.trades.filter(t => t.status === 'CLOSED')
-        const totalVolume = data.trades.reduce((sum, t) => sum + (t.quantity * t.contractSize * t.openPrice), 0)
-        const totalPnl = closedTrades.reduce((sum, t) => sum + (t.realizedPnl || 0), 0)
-        setStats({
-          total: data.total || data.trades.length,
-          open: openTrades.length,
-          volume: totalVolume,
-          pnl: totalPnl
-        })
+        // Stats are computed over ALL matching trades (not just this page) via
+        // a backend aggregation endpoint, using the same filters as the table.
+        const statsRes = await fetch(`${API_URL}/admin/trade/stats?_=1${statusParam}${accountTypeParam}${startDateParam}${endDateParam}`)
+        const statsData = await statsRes.json()
+        if (statsData.success) {
+          setStats({
+            total: statsData.total,
+            open: statsData.open,
+            volume: statsData.volume,
+            pnl: statsData.pnl
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching trades:', error)

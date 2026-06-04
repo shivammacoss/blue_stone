@@ -59,6 +59,59 @@ router.get('/all', async (req, res) => {
   }
 })
 
+// GET /api/admin/trade/stats - Aggregate stats over ALL matching trades
+// (not just one page). Volume = notional turnover Σ(lots × contractSize × price);
+// pnl = net realized P&L of closed trades (trade profit/loss).
+router.get('/stats', async (req, res) => {
+  try {
+    const { status, startDate, endDate, accountType } = req.query
+
+    let query = {}
+    if (status) query.status = status
+    if (accountType === 'challenge') {
+      query.isChallengeAccount = true
+    } else if (accountType === 'forex') {
+      query.isChallengeAccount = { $ne: true }
+    }
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = new Date(startDate)
+      if (endDate) {
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        query.createdAt.$lte = end
+      }
+    }
+
+    const agg = await Trade.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          open: { $sum: { $cond: [{ $eq: ['$status', 'OPEN'] }, 1, 0] } },
+          volume: {
+            $sum: {
+              $multiply: ['$quantity', { $ifNull: ['$contractSize', 100000] }, '$openPrice']
+            }
+          },
+          pnl: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'CLOSED'] }, { $ifNull: ['$realizedPnl', 0] }, 0]
+            }
+          }
+        }
+      }
+    ])
+
+    const s = agg[0] || { total: 0, open: 0, volume: 0, pnl: 0 }
+    res.json({ success: true, total: s.total, open: s.open, volume: s.volume, pnl: s.pnl })
+  } catch (error) {
+    console.error('Error fetching trade stats:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
 // POST /api/admin/trade/create - Admin create trade for user
 router.post('/create', async (req, res) => {
   try {

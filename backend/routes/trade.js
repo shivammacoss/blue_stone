@@ -147,6 +147,22 @@ router.post('/open', async (req, res) => {
       })
     }
 
+    // Algo accounts are locked from manual trading until their lock period
+    // expires. Block the trade with a dedicated code so the UI can show the
+    // "this is an Algo account" popup with a days-remaining countdown.
+    const regularAccount = await TradingAccount.findById(tradingAccountId)
+    if (regularAccount && regularAccount.isAlgo && regularAccount.algoLockUntil && new Date(regularAccount.algoLockUntil) > new Date()) {
+      const msRemaining = new Date(regularAccount.algoLockUntil) - Date.now()
+      const daysRemaining = Math.ceil(msRemaining / (24 * 60 * 60 * 1000))
+      return res.status(403).json({
+        success: false,
+        code: 'ALGO_LOCKED',
+        message: `This is an Algo account. You cannot trade from this account. It unlocks in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`,
+        daysRemaining,
+        algoLockUntil: regularAccount.algoLockUntil
+      })
+    }
+
     // Regular trading account - use standard trade engine
     const trade = await tradeEngine.openTrade(
       userId,

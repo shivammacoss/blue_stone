@@ -53,6 +53,26 @@ const tradingAccountSchema = new mongoose.Schema({
   isDemo: {
     type: Boolean,
     default: false
+  },
+  // Algo account flag (mirrors the account type at creation time) and the
+  // timestamp until which the account's balance is locked. While
+  // `algoLockUntil` is in the future the user cannot trade or withdraw from
+  // this account; once it passes, both unlock.
+  isAlgo: {
+    type: Boolean,
+    default: false
+  },
+  algoLockUntil: {
+    type: Date,
+    default: null
+  },
+  // Locked principal (deposited capital) for an Algo account. While the lock is
+  // active the user may withdraw only profit (balance − algoPrincipal); the
+  // principal becomes withdrawable once the lock period completes. Grows with
+  // each deposit into the account.
+  algoPrincipal: {
+    type: Number,
+    default: 0
   }
 }, { timestamps: true })
 

@@ -5,6 +5,7 @@ import TradingAccount from '../models/TradingAccount.js'
 import AccountType from '../models/AccountType.js'
 import Trade from '../models/Trade.js'
 import Transaction from '../models/Transaction.js'
+import { checkAlgoWithdrawal, recordAlgoDeposit } from '../services/algoLockService.js'
 
 const router = express.Router()
 
@@ -84,6 +85,8 @@ router.post('/to-trading', async (req, res) => {
     // Perform transfer
     user.walletBalance -= transferAmount
     tradingAccount.balance += transferAmount
+    // Algo accounts: track the deposit as locked principal.
+    recordAlgoDeposit(tradingAccount, transferAmount)
 
     await user.save()
     await tradingAccount.save()
@@ -158,6 +161,13 @@ router.post('/from-trading', async (req, res) => {
         success: false,
         message: `Cannot transfer from ${tradingAccount.status} account`
       })
+    }
+
+    // Algo accounts: while locked, only profit (balance − principal) is
+    // withdrawable; the principal unlocks after the lock period completes.
+    const algoError = checkAlgoWithdrawal(tradingAccount, transferAmount)
+    if (algoError) {
+      return res.status(403).json({ success: false, ...algoError })
     }
 
     // Get open trades to calculate free margin

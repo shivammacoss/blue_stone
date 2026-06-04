@@ -96,7 +96,9 @@ const Account = () => {
   // funded with paper money so there's no compliance exposure). We track the
   // pending click so the user doesn't have to re-press Trade after KYC.
   const [pendingTradeAccount, setPendingTradeAccount] = useState(null)
-  
+  // Popup shown when the user tries to trade on a still-locked Algo account.
+  const [algoLockPopup, setAlgoLockPopup] = useState(null) // { daysRemaining }
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
@@ -119,7 +121,30 @@ const Account = () => {
   // Gatekeeper invoked by every Trade button. Demo accounts always pass.
   // Real / Challenge accounts require an APPROVED kyc — pending / rejected /
   // none all open the gate modal.
+  // Days remaining until an Algo account's balance unlocks.
+  // Returns null for non-algo accounts, 0 once the lock has expired.
+  const getAlgoDaysRemaining = (account) => {
+    const isAlgo = account?.isAlgo || account?.accountTypeId?.isAlgo
+    if (!isAlgo || !account?.algoLockUntil) return null
+    const ms = new Date(account.algoLockUntil) - Date.now()
+    if (ms <= 0) return 0
+    return Math.ceil(ms / (24 * 60 * 60 * 1000))
+  }
+
+  // If the account is a still-locked Algo account, show the lock popup and
+  // return true so the caller can abort (trade/deposit/withdraw blocked).
+  const blockIfAlgoLocked = (account) => {
+    const days = getAlgoDaysRemaining(account)
+    if (days > 0) {
+      setAlgoLockPopup({ daysRemaining: days })
+      return true
+    }
+    return false
+  }
+
   const handleTradeClick = (account) => {
+    // Locked Algo account: trading is blocked until the lock period ends.
+    if (blockIfAlgoLocked(account)) return
     const isDemo = account?.isDemo || account?.accountTypeId?.isDemo
     if (isDemo || kycStatus === 'approved') {
       if (isMobile) navigate(`/mobile?account=${account._id}`)
@@ -892,6 +917,19 @@ const Account = () => {
                         </span>
                         <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{account.accountTypeId?.name || 'Standard'}</span>
                         <span className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>#{account.accountId}</span>
+                        {(() => {
+                          const days = getAlgoDaysRemaining(account)
+                          if (days === null) return null
+                          return days > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/15 text-purple-400" title="Principal is locked. Profit can be withdrawn; principal unlocks when the timer ends.">
+                              <Lock size={10} /> Principal locked · {days}d left
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-500/15 text-green-500">
+                              <Lock size={10} /> Unlocked
+                            </span>
+                          )
+                        })()}
                       </div>
                     </div>
 
@@ -921,13 +959,13 @@ const Account = () => {
                         ) : (
                           <>
                             <button
-                              onClick={() => { setSelectedAccount(account); setShowTransferModal(true); }}
+                              onClick={() => { if (blockIfAlgoLocked(account)) return; setSelectedAccount(account); setShowTransferModal(true); }}
                               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300 hover:bg-dark-700' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                             >
                               <Plus size={16} /> Deposit
                             </button>
                             <button
-                              onClick={() => { setSelectedAccount(account); setShowWithdrawModal(true); }}
+                              onClick={() => { if (blockIfAlgoLocked(account)) return; setSelectedAccount(account); setShowWithdrawModal(true); }}
                               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300 hover:bg-dark-700' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                             >
                               <Minus size={16} /> Withdraw
@@ -1078,6 +1116,9 @@ const Account = () => {
                         <div className="flex items-center gap-3 mb-3">
                           <span className="text-2xl">{icon}</span>
                           <span className="text-white font-bold text-lg">{type.name}</span>
+                          {type.isAlgo && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/20 text-cyan-400 flex items-center gap-0.5"><Lock size={9} /> ALGO</span>
+                          )}
                           <div className={`w-4 h-4 rounded-full border-2 ml-auto ${isSelected ? 'border-white bg-white' : 'border-gray-500'}`}>
                             {isSelected && <div className="w-full h-full rounded-full bg-white" />}
                           </div>
@@ -1107,6 +1148,31 @@ const Account = () => {
                             <p className="text-white font-semibold">{type.commission ? `$${type.commission}/lot` : 'NO COMM'}</p>
                           </div>
                         </div>
+
+                        {/* Algo account lock details */}
+                        {type.isAlgo && (
+                          <div className="mt-4 pt-4 border-t border-cyan-500/20 space-y-2">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                              <div>
+                                <p className="text-gray-500 text-xs">Capital Lock</p>
+                                <p className="text-cyan-400 font-semibold">{type.algoLockDays || 90} days</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 text-xs">Monthly ROI Target</p>
+                                <p className="text-cyan-400 font-semibold">{type.algoRoiMin ?? 2}% – {type.algoRoiMax ?? 5}%</p>
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-2 text-xs">
+                              <Check size={13} className="text-green-500 mt-0.5 shrink-0" />
+                              <span className="text-gray-400"><span className="text-gray-300">Profit withdrawal:</span> Allowed as per the withdrawal policy</span>
+                            </div>
+                            <div className="flex items-start gap-2 text-xs">
+                              <Lock size={13} className="text-cyan-400 mt-0.5 shrink-0" />
+                              <span className="text-gray-400"><span className="text-gray-300">Principal withdrawal:</span> After the {type.algoLockDays || 90}-day lock period</span>
+                            </div>
+                            <p className="text-gray-500 text-[11px] pt-1">⚠ Trading & withdrawals stay locked until the {type.algoLockDays || 90}-day period completes.</p>
+                          </div>
+                        )}
                       </button>
                     )
                   })
@@ -1115,10 +1181,12 @@ const Account = () => {
             </div>
 
             {selectedType && (
-              <div className={`mb-4 p-4 rounded-xl ${selectedType.isDemo ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-accent-green/10 border border-accent-green/30'}`}>
-                <p className={`text-sm text-center ${selectedType.isDemo ? 'text-yellow-500' : 'text-accent-green'}`}>
-                  ✓ <strong>{selectedType.name}</strong> {selectedType.isDemo 
+              <div className={`mb-4 p-4 rounded-xl ${selectedType.isDemo ? 'bg-yellow-500/10 border border-yellow-500/30' : selectedType.isAlgo ? 'bg-cyan-500/10 border border-cyan-500/30' : 'bg-accent-green/10 border border-accent-green/30'}`}>
+                <p className={`text-sm text-center ${selectedType.isDemo ? 'text-yellow-500' : selectedType.isAlgo ? 'text-cyan-400' : 'text-accent-green'}`}>
+                  ✓ <strong>{selectedType.name}</strong> {selectedType.isDemo
                     ? `demo account will be created with $${selectedType.demoBalance?.toLocaleString() || '10,000'} virtual balance.`
+                    : selectedType.isAlgo
+                    ? `account will be created with $0 balance. Deposited capital stays locked for ${selectedType.algoLockDays || 90} days — trading & principal withdrawal unlock after that.`
                     : 'account will be created with $0 balance. Deposit funds after creation.'}
                 </p>
               </div>
@@ -1906,6 +1974,35 @@ const Account = () => {
                 className="flex-1 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
               >
                 Delete Forever
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Algo Account locked popup */}
+      {algoLockPopup && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-dark-800 rounded-2xl overflow-hidden border border-purple-500/30">
+            <div className="px-6 pt-6 pb-2 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-purple-500/15 flex items-center justify-center">
+                <Lock size={26} className="text-purple-400" />
+              </div>
+              <h3 className="text-white font-semibold text-lg mb-2">Algo Account Locked</h3>
+              <p className="text-gray-400 text-sm">
+                This is an Algo account. You cannot trade from this account — it is locked for the lock period.
+              </p>
+              <div className="mt-4 inline-flex items-center gap-2 bg-purple-500/10 text-purple-300 px-4 py-2 rounded-lg">
+                <span className="text-2xl font-bold">{algoLockPopup.daysRemaining}</span>
+                <span className="text-sm">day{algoLockPopup.daysRemaining === 1 ? '' : 's'} until unlock</span>
+              </div>
+            </div>
+            <div className="border-t border-gray-700/50 mt-4">
+              <button
+                onClick={() => setAlgoLockPopup(null)}
+                className="w-full py-4 text-blue-500 font-medium text-lg hover:bg-dark-700 transition-colors"
+              >
+                Got it
               </button>
             </div>
           </div>

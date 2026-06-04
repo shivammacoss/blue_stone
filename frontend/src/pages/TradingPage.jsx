@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Search, Star, X, Plus, Minus, Settings, Home, Wallet, LayoutGrid, BarChart3, Pencil, Trophy, AlertTriangle, Sun, Moon, Grid2X2, Download, RefreshCw, TrendingUp } from 'lucide-react'
+import { Search, Star, X, Plus, Minus, Settings, Home, Wallet, LayoutGrid, BarChart3, Pencil, Trophy, AlertTriangle, Sun, Moon, Grid2X2, Download, RefreshCw, TrendingUp, Lock } from 'lucide-react'
 import bluestoneLogo from '../assets/logo.png'
 import priceService from '../services/priceService'
 import binanceApiService from '../services/binanceApi'
@@ -82,6 +82,8 @@ const TradingPage = () => {
   const [isExecutingTrade, setIsExecutingTrade] = useState(false)
   const [tradeError, setTradeError] = useState('')
   const [tradeSuccess, setTradeSuccess] = useState('')
+  // Popup shown when the user tries to trade on a locked Algo account.
+  const [algoLockPopup, setAlgoLockPopup] = useState(null) // { message, daysRemaining }
   const [accountSummary, setAccountSummary] = useState({
     balance: 0,
     credit: 0,
@@ -894,13 +896,20 @@ const TradingPage = () => {
         setShowStopLoss(false)
         setShowTakeProfit(false)
       } else {
+        // Algo account locked — show a blocking popup instead of an inline error
+        if (data.code === 'ALGO_LOCKED') {
+          setAlgoLockPopup({ message: data.message, daysRemaining: data.daysRemaining })
+          setIsExecutingTrade(false)
+          return
+        }
+
         // Check if account failed due to rule violations
         if (data.accountFailed) {
           // Redirect to account page with fail reason
           navigate(`/account?failed=true&reason=${encodeURIComponent(data.failReason || data.message)}`)
           return
         }
-        
+
         // Show warning count if available
         if (data.warningCount > 0) {
           setTradeError(`${data.message} (Warning ${data.warningCount}/3 - ${data.remainingWarnings} remaining before account fails)`)
@@ -1044,6 +1053,8 @@ const TradingPage = () => {
         setTradeSuccess(`${pendingOrderType} order placed successfully!`)
         fetchPendingOrders()
         setEntryPrice('')
+      } else if (data.code === 'ALGO_LOCKED') {
+        setAlgoLockPopup({ message: data.message, daysRemaining: data.daysRemaining })
       } else {
         setTradeError(data.message || 'Failed to place order')
       }
@@ -3049,6 +3060,37 @@ const TradingPage = () => {
                 className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-medium py-3 rounded-lg hover:opacity-90 transition-colors"
               >
                 Withdraw
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Algo Account locked popup */}
+      {algoLockPopup && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#1c1c1e] rounded-2xl overflow-hidden border border-purple-500/30">
+            <div className="px-6 pt-6 pb-2 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-purple-500/15 flex items-center justify-center">
+                <Lock size={26} className="text-purple-400" />
+              </div>
+              <h3 className="text-white font-semibold text-lg mb-2">Algo Account Locked</h3>
+              <p className="text-gray-400 text-sm">
+                {algoLockPopup.message || 'This is an Algo account. You cannot trade from this account.'}
+              </p>
+              {algoLockPopup.daysRemaining != null && (
+                <div className="mt-4 inline-flex items-center gap-2 bg-purple-500/10 text-purple-300 px-4 py-2 rounded-lg">
+                  <span className="text-2xl font-bold">{algoLockPopup.daysRemaining}</span>
+                  <span className="text-sm">day{algoLockPopup.daysRemaining === 1 ? '' : 's'} until unlock</span>
+                </div>
+              )}
+            </div>
+            <div className="border-t border-gray-700/50 mt-4">
+              <button
+                onClick={() => setAlgoLockPopup(null)}
+                className="w-full py-4 text-blue-500 font-medium text-lg hover:bg-[#2c2c2e] transition-colors"
+              >
+                Got it
               </button>
             </div>
           </div>

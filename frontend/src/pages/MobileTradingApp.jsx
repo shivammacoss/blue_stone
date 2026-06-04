@@ -5,7 +5,7 @@ import {
   Copy, Users, HelpCircle, FileText, UserCircle, LogOut, Wallet,
   X, ChevronRight, Search, Star, ArrowUp, ArrowDown, Clock,
   Plus, Minus, Settings, RefreshCw, ChevronDown, Bell, User,
-  ArrowDownCircle, ArrowUpCircle, Check, Pencil, Trash2
+  ArrowDownCircle, ArrowUpCircle, Check, Pencil, Trash2, Lock
 } from 'lucide-react'
 import priceService from '../services/priceService'
 import priceStreamService from '../services/priceStream'
@@ -60,6 +60,8 @@ const MobileTradingApp = () => {
   // iOS-style notification states
   const [notifications, setNotifications] = useState([])
   const notificationIdRef = useRef(0)
+  // Popup shown when trading is attempted on a locked Algo account.
+  const [algoLockPopup, setAlgoLockPopup] = useState(null) // { message, daysRemaining }
 
   const categories = ['All', 'Starred', 'Forex', 'Metals', 'Commodities', 'Crypto', 'Indices']
 
@@ -385,6 +387,9 @@ const MobileTradingApp = () => {
           showNotification('Order executed successfully!', 'success')
         }
         fetchAccountSummary()
+      } else if (data.code === 'ALGO_LOCKED') {
+        setShowOrderPanel(false)
+        setAlgoLockPopup({ message: data.message, daysRemaining: data.daysRemaining })
       } else {
         showNotification(data.message || 'Order failed', 'error')
       }
@@ -1316,6 +1321,8 @@ const MobileTradingApp = () => {
                   fetchOpenTrades()
                   fetchAccountSummary()
                   showNotification('Sell order executed!', 'success')
+                } else if (data.code === 'ALGO_LOCKED') {
+                  setAlgoLockPopup({ message: data.message, daysRemaining: data.daysRemaining })
                 } else {
                   showNotification(data.message || 'Order failed', 'error')
                 }
@@ -1363,6 +1370,8 @@ const MobileTradingApp = () => {
                   fetchOpenTrades()
                   fetchAccountSummary()
                   showNotification('Buy order executed!', 'success')
+                } else if (data.code === 'ALGO_LOCKED') {
+                  setAlgoLockPopup({ message: data.message, daysRemaining: data.daysRemaining })
                 } else {
                   showNotification(data.message || 'Order failed', 'error')
                 }
@@ -1796,6 +1805,37 @@ const MobileTradingApp = () => {
           </div>
         ))}
       </div>
+
+      {/* Algo Account locked popup */}
+      {algoLockPopup && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#1c1c1e] rounded-2xl overflow-hidden border border-purple-500/30">
+            <div className="px-6 pt-6 pb-2 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-purple-500/15 flex items-center justify-center">
+                <Lock size={26} className="text-purple-400" />
+              </div>
+              <h3 className="text-white font-semibold text-lg mb-2">Algo Account Locked</h3>
+              <p className="text-gray-400 text-sm">
+                {algoLockPopup.message || 'This is an Algo account. You cannot trade from this account.'}
+              </p>
+              {algoLockPopup.daysRemaining != null && (
+                <div className="mt-4 inline-flex items-center gap-2 bg-purple-500/10 text-purple-300 px-4 py-2 rounded-lg">
+                  <span className="text-2xl font-bold">{algoLockPopup.daysRemaining}</span>
+                  <span className="text-sm">day{algoLockPopup.daysRemaining === 1 ? '' : 's'} until unlock</span>
+                </div>
+              )}
+            </div>
+            <div className="border-t border-gray-700/50 mt-4">
+              <button
+                onClick={() => setAlgoLockPopup(null)}
+                className="w-full py-4 text-blue-500 font-medium text-lg hover:bg-[#2c2c2e] transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

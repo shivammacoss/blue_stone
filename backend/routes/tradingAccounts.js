@@ -3,6 +3,7 @@ import TradingAccount from '../models/TradingAccount.js'
 import AccountType from '../models/AccountType.js'
 import Wallet from '../models/Wallet.js'
 import Transaction from '../models/Transaction.js'
+import { checkAlgoWithdrawal, recordAlgoDeposit } from '../services/algoLockService.js'
 
 const router = express.Router()
 
@@ -10,7 +11,7 @@ const router = express.Router()
 router.get('/user/:userId', async (req, res) => {
   try {
     const accounts = await TradingAccount.find({ userId: req.params.userId })
-      .populate('accountTypeId', 'name description minDeposit leverage exposureLimit isDemo')
+      .populate('accountTypeId', 'name description minDeposit leverage exposureLimit isDemo isAlgo algoLockDays')
       .sort({ createdAt: -1 })
     res.json({ success: true, accounts })
   } catch (error) {
@@ -56,6 +57,15 @@ router.post('/', async (req, res) => {
     // Determine initial balance - Demo accounts get auto-funded with non-refundable balance
     const initialBalance = accountType.isDemo ? (accountType.demoBalance || 10000) : 0
 
+    // Algo accounts lock their balance for `algoLockDays` from the moment the
+    // account is opened. Stamp the unlock timestamp so trade/withdrawal guards
+    // and the front-end countdown can read it directly off the account.
+    let algoLockUntil = null
+    if (accountType.isAlgo) {
+      const lockDays = accountType.algoLockDays || 90
+      algoLockUntil = new Date(Date.now() + lockDays * 24 * 60 * 60 * 1000)
+    }
+
     // Create trading account
     const tradingAccount = new TradingAccount({
       userId,
@@ -65,7 +75,11 @@ router.post('/', async (req, res) => {
       credit: accountType.isDemo ? initialBalance : 0, // Demo balance is non-refundable (credit)
       leverage: accountType.leverage,
       exposureLimit: accountType.exposureLimit,
-      isDemo: accountType.isDemo || false
+      isDemo: accountType.isDemo || false,
+      isAlgo: accountType.isAlgo || false,
+      algoLockUntil,
+      // Any starting balance counts as locked principal for an algo account.
+      algoPrincipal: accountType.isAlgo ? initialBalance : 0
     })
 
     await tradingAccount.save()
@@ -86,18 +100,20 @@ router.post('/', async (req, res) => {
       })
     }
 
-    res.status(201).json({ 
+    res.status(201).json({
       success: true,
-      message: accountType.isDemo 
-        ? `Demo account created with $${initialBalance} non-refundable balance` 
-        : 'Trading account created successfully', 
+      message: accountType.isDemo
+        ? `Demo account created with $${initialBalance} non-refundable balance`
+        : 'Trading account created successfully',
       account: {
         _id: tradingAccount._id,
         accountId: tradingAccount.accountId,
         balance: tradingAccount.balance,
         leverage: tradingAccount.leverage,
         status: tradingAccount.status,
-        isDemo: accountType.isDemo || false
+        isDemo: accountType.isDemo || false,
+        isAlgo: accountType.isAlgo || false,
+        algoLockUntil: tradingAccount.algoLockUntil
       }
     })
   } catch (error) {
@@ -170,7 +186,9 @@ router.post('/:id/transfer', async (req, res) => {
 
       wallet.balance -= amount
       account.balance += amount
-      
+      // Algo accounts: track the deposit as locked principal.
+      recordAlgoDeposit(account, amount)
+
       await wallet.save()
       await account.save()
 
@@ -192,6 +210,13 @@ router.post('/:id/transfer', async (req, res) => {
         accountBalance: account.balance
       })
     } else if (direction === 'withdraw') {
+      // Algo accounts: while locked, only profit (balance − principal) is
+      // withdrawable; the principal unlocks after the lock period.
+      const algoError = checkAlgoWithdrawal(account, amount)
+      if (algoError) {
+        return res.status(403).json(algoError)
+      }
+
       // Transfer from Account Wallet to Main Wallet
       if (account.balance < amount) {
         return res.status(400).json({ message: 'Insufficient account balance' })

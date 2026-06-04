@@ -11,6 +11,7 @@ import UserBonus from '../models/UserBonus.js'
 import OTP from '../models/OTP.js'
 import { sendTemplateEmail, generateOTP, getOTPExpiry } from '../services/emailService.js'
 import EmailSettings from '../models/EmailSettings.js'
+import { checkAlgoWithdrawal, recordAlgoDeposit } from '../services/algoLockService.js'
 
 const router = express.Router()
 
@@ -353,11 +354,13 @@ router.post('/transfer-to-trading', async (req, res) => {
     // Transfer funds
     wallet.balance -= amount
     tradingAccount.balance += amount
+    // Algo accounts: track the deposit as locked principal.
+    recordAlgoDeposit(tradingAccount, amount)
 
     await wallet.save()
     await tradingAccount.save()
 
-    res.json({ 
+    res.json({
       message: 'Funds transferred successfully',
       walletBalance: wallet.balance,
       tradingAccountBalance: tradingAccount.balance
@@ -390,6 +393,13 @@ router.post('/transfer-from-trading', async (req, res) => {
     // Check trading account balance
     if (tradingAccount.balance < amount) {
       return res.status(400).json({ message: 'Insufficient trading account balance' })
+    }
+
+    // Algo accounts: while locked, only profit (balance − principal) is
+    // withdrawable; the principal unlocks after the lock period completes.
+    const algoError = checkAlgoWithdrawal(tradingAccount, amount)
+    if (algoError) {
+      return res.status(403).json(algoError)
     }
 
     // Get or create wallet

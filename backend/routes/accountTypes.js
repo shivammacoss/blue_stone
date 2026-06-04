@@ -70,7 +70,7 @@ router.get('/all', async (req, res) => {
 // POST /api/account-types - Create account type (admin)
 router.post('/', async (req, res) => {
   try {
-    const { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isDemo, demoBalance } = req.body
+    const { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isDemo, demoBalance, isAlgo, algoLockDays, algoRoiMin, algoRoiMax } = req.body
     const accountType = new AccountType({
       name,
       description,
@@ -80,7 +80,11 @@ router.post('/', async (req, res) => {
       minSpread: minSpread || 0,
       commission: commission || 0,
       isDemo: isDemo || false,
-      demoBalance: isDemo ? (demoBalance || 10000) : 0
+      demoBalance: isDemo ? (demoBalance || 10000) : 0,
+      isAlgo: isAlgo || false,
+      algoLockDays: isAlgo ? (algoLockDays || 90) : 90,
+      algoRoiMin: isAlgo ? (algoRoiMin ?? 2) : 2,
+      algoRoiMax: isAlgo ? (algoRoiMax ?? 5) : 5
     })
     await accountType.save()
     res.status(201).json({ message: 'Account type created', accountType })
@@ -92,10 +96,10 @@ router.post('/', async (req, res) => {
 // PUT /api/account-types/:id - Update account type (admin)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance } = req.body
+    const { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance, isAlgo, algoLockDays, algoRoiMin, algoRoiMax } = req.body
     const accountType = await AccountType.findByIdAndUpdate(
       req.params.id,
-      { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance },
+      { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance, isAlgo: isAlgo || false, algoLockDays: isAlgo ? (algoLockDays || 90) : 90, algoRoiMin: isAlgo ? (algoRoiMin ?? 2) : 2, algoRoiMax: isAlgo ? (algoRoiMax ?? 5) : 5 },
       { new: true }
     )
     if (!accountType) {
