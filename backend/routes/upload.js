@@ -14,6 +14,7 @@ const uploadsDir = path.join(__dirname, '../uploads')
 const screenshotsDir = path.join(uploadsDir, 'screenshots')
 const profilesDir = path.join(uploadsDir, 'profiles')
 const kycDir = path.join(uploadsDir, 'kyc')
+const accountTypesDir = path.join(uploadsDir, 'account-types')
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true })
@@ -26,6 +27,9 @@ if (!fs.existsSync(profilesDir)) {
 }
 if (!fs.existsSync(kycDir)) {
   fs.mkdirSync(kycDir, { recursive: true })
+}
+if (!fs.existsSync(accountTypesDir)) {
+  fs.mkdirSync(accountTypesDir, { recursive: true })
 }
 
 // Configure multer for file uploads
@@ -143,6 +147,47 @@ router.post('/profile-image', profileUpload.single('profileImage'), async (req, 
     })
   } catch (error) {
     console.error('[Profile Image] Error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
+// Configure multer for account-type image uploads (admin)
+const accountTypeStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, accountTypesDir)
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    const ext = path.extname(file.originalname)
+    cb(null, `account-type-${uniqueSuffix}${ext}`)
+  }
+})
+
+const accountTypeUpload = multer({
+  storage: accountTypeStorage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+})
+
+// POST /api/upload/account-type-image - Upload an account type logo/photo (admin)
+router.post('/account-type-image', accountTypeUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' })
+    }
+
+    const fileUrl = `/uploads/account-types/${req.file.filename}`
+
+    res.json({
+      success: true,
+      message: 'Account type image uploaded successfully',
+      url: fileUrl,
+      filename: req.file.filename
+    })
+  } catch (error) {
+    console.error('Error uploading account type image:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 })

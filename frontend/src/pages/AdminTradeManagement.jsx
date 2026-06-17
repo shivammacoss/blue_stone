@@ -30,7 +30,8 @@ const AdminTradeManagement = () => {
   // we lowercase here so a direct URL hit lands on the right option.
   const urlStatus = (searchParams.get('status') || '').toLowerCase()
   const initialStatus = ['open', 'closed', 'pending'].includes(urlStatus) ? urlStatus : 'all'
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchInput, setSearchInput] = useState('')   // raw text box value
+  const [searchTerm, setSearchTerm] = useState('')     // debounced value sent to API
   const [filterStatus, setFilterStatus] = useState(initialStatus)
   const [filterAccountType, setFilterAccountType] = useState('all')
   const [startDate, setStartDate] = useState('')
@@ -78,7 +79,17 @@ const AdminTradeManagement = () => {
   useEffect(() => {
     fetchTrades()
     fetchUsers()
-  }, [filterStatus, filterAccountType, currentPage, startDate, endDate])
+  }, [filterStatus, filterAccountType, currentPage, startDate, endDate, searchTerm])
+
+  // Debounce the search box -> searchTerm so we don't hit the API on every keystroke.
+  // Reset to page 1 whenever the search changes so results aren't hidden on later pages.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setCurrentPage(1)
+      setSearchTerm(searchInput.trim())
+    }, 400)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   // Fetch live prices for open trades via WebSocket for institutional-grade streaming
   useEffect(() => {
@@ -398,14 +409,15 @@ const AdminTradeManagement = () => {
       const accountTypeParam = filterAccountType !== 'all' ? `&accountType=${filterAccountType}` : ''
       const startDateParam = startDate ? `&startDate=${startDate}` : ''
       const endDateParam = endDate ? `&endDate=${endDate}` : ''
-      const res = await fetch(`${API_URL}/admin/trade/all?limit=${tradesPerPage}&offset=${offset}${statusParam}${accountTypeParam}${startDateParam}${endDateParam}`)
+      const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
+      const res = await fetch(`${API_URL}/admin/trade/all?limit=${tradesPerPage}&offset=${offset}${statusParam}${accountTypeParam}${startDateParam}${endDateParam}${searchParam}`)
       const data = await res.json()
-      if (data.trades) {
+      if (data.success && Array.isArray(data.trades)) {
         setTrades(data.trades)
-        setTotalTrades(data.total || data.trades.length)
+        setTotalTrades(data.total ?? data.trades.length)
         // Stats are computed over ALL matching trades (not just this page) via
         // a backend aggregation endpoint, using the same filters as the table.
-        const statsRes = await fetch(`${API_URL}/admin/trade/stats?_=1${statusParam}${accountTypeParam}${startDateParam}${endDateParam}`)
+        const statsRes = await fetch(`${API_URL}/admin/trade/stats?_=1${statusParam}${accountTypeParam}${startDateParam}${endDateParam}${searchParam}`)
         const statsData = await statsRes.json()
         if (statsData.success) {
           setStats({
@@ -415,9 +427,17 @@ const AdminTradeManagement = () => {
             pnl: statsData.pnl
           })
         }
+      } else {
+        // Request failed or returned no valid payload — clear the list instead of
+        // leaving the previous (unfiltered) results on screen.
+        console.error('Trade fetch failed:', data?.message)
+        setTrades([])
+        setTotalTrades(0)
       }
     } catch (error) {
       console.error('Error fetching trades:', error)
+      setTrades([])
+      setTotalTrades(0)
     }
     setLoading(false)
   }
@@ -432,13 +452,9 @@ const AdminTradeManagement = () => {
     }
   }
 
-  const filteredTrades = trades.filter(trade => {
-    const matchesSearch = trade.tradeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      trade.symbol?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      trade.userId?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      trade.userId?.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesSearch
-  })
+  // Search is applied server-side (across ALL trades, not just this page),
+  // so the table renders exactly what the backend returns.
+  const filteredTrades = trades
 
   const exportToExcel = () => {
     if (filteredTrades.length === 0) {
@@ -539,6 +555,25 @@ const AdminTradeManagement = () => {
             >
               <Plus size={18} /> Create Trade
             </button>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search by user or trade ID..."
+                className="bg-dark-700 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-white focus:outline-none focus:border-gray-600 w-64"
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}

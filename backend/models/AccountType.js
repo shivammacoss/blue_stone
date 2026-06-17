@@ -10,6 +10,11 @@ const accountTypeSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Optional logo/photo for the account type (URL path like /uploads/account-types/...)
+  image: {
+    type: String,
+    default: ''
+  },
   minDeposit: {
     type: Number,
     required: true,

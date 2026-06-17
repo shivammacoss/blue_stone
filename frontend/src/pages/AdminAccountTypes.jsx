@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import AdminLayout from '../components/AdminLayout'
-import { 
+import {
   Plus,
   Edit,
   Trash2,
@@ -8,9 +8,14 @@ import {
   Check,
   RefreshCw,
   CreditCard,
-  Lock
+  Lock,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react'
-import { API_URL } from '../config/api'
+import { API_URL, API_BASE_URL } from '../config/api'
+
+// Build a full image URL from a stored path (handles absolute URLs and relative /uploads paths)
+const imageSrc = (img) => (img ? (img.startsWith('http') ? img : `${API_BASE_URL}${img}`) : '')
 
 const AdminAccountTypes = () => {
   const [accountTypes, setAccountTypes] = useState([])
@@ -19,9 +24,11 @@ const AdminAccountTypes = () => {
   const [editingType, setEditingType] = useState(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    image: '',
     minDeposit: '',
     leverage: '1:100',
     exposureLimit: '',
@@ -50,6 +57,33 @@ const AdminAccountTypes = () => {
       console.error('Error fetching account types:', error)
     }
     setLoading(false)
+  }
+
+  const handleImageUpload = async (file) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file')
+      return
+    }
+    setError('')
+    setUploadingImage(true)
+    try {
+      const fd = new FormData()
+      fd.append('image', file)
+      const res = await fetch(`${API_URL}/upload/account-type-image`, {
+        method: 'POST',
+        body: fd
+      })
+      const data = await res.json()
+      if (data.success) {
+        setFormData((prev) => ({ ...prev, image: data.url }))
+      } else {
+        setError(data.message || 'Image upload failed')
+      }
+    } catch (e) {
+      setError('Image upload failed')
+    }
+    setUploadingImage(false)
   }
 
   const handleSubmit = async () => {
@@ -134,6 +168,7 @@ const AdminAccountTypes = () => {
     setFormData({
       name: '',
       description: '',
+      image: '',
       minDeposit: '',
       leverage: '1:100',
       exposureLimit: '',
@@ -160,6 +195,7 @@ const AdminAccountTypes = () => {
       ...prev,
       name: '',
       description: '',
+      image: '',
       minDeposit: '500',
       leverage: '1:500',
       exposureLimit: '',
@@ -178,6 +214,7 @@ const AdminAccountTypes = () => {
     setFormData({
       name: type.name,
       description: type.description || '',
+      image: type.image || '',
       minDeposit: type.minDeposit.toString(),
       leverage: type.leverage,
       exposureLimit: type.exposureLimit?.toString() || '',
@@ -197,6 +234,11 @@ const AdminAccountTypes = () => {
 
   const renderCard = (type) => (
     <div key={type._id} className={`bg-dark-800 rounded-lg p-4 border ${type.isAlgo ? (type.isActive ? 'border-purple-500/40' : 'border-red-500/30 opacity-60') : (type.isActive ? 'border-gray-700' : 'border-red-500/30 opacity-60')}`}>
+      {type.image && (
+        <div className="flex justify-center mb-3">
+          <img src={imageSrc(type.image)} alt={type.name} className="w-20 h-20 rounded-full object-cover border-2 border-gray-600" />
+        </div>
+      )}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="text-white font-medium text-sm">{type.name}</h3>
@@ -385,6 +427,43 @@ const AdminAccountTypes = () => {
                   rows={2}
                   className="w-full bg-dark-700 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
                 />
+              </div>
+
+              {/* Account Type Photo */}
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">Account Type Photo</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-lg bg-dark-700 border border-gray-700 flex items-center justify-center overflow-hidden shrink-0">
+                    {formData.image ? (
+                      <img src={imageSrc(formData.image)} alt="Account type" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon size={22} className="text-gray-600" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer flex items-center gap-2 bg-dark-700 hover:bg-dark-600 text-white text-sm px-4 py-2 rounded-lg border border-gray-700 transition-colors">
+                      <Upload size={15} />
+                      {uploadingImage ? 'Uploading...' : (formData.image ? 'Change Photo' : 'Upload Photo')}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingImage}
+                        onChange={(e) => handleImageUpload(e.target.files?.[0])}
+                      />
+                    </label>
+                    {formData.image && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, image: '' })}
+                        className="text-red-400 hover:text-red-300 text-sm"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-gray-500 text-xs mt-1">Optional logo shown on account cards (max 5MB)</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

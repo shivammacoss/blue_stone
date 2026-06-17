@@ -296,17 +296,24 @@ const ProfilePage = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         const data = await res.json()
-        console.log('Fetched user data:', data)
         if (data.user) {
           // Update localStorage with fresh data
           localStorage.setItem('user', JSON.stringify(data.user))
+          // Hydrate the form from the DB (source of truth) so saved edits persist
+          // across refreshes instead of falling back to a stale localStorage snapshot.
+          setProfile(prev => ({
+            ...prev,
+            name: data.user.firstName ?? prev.name,
+            lastName: data.user.lastName ?? prev.lastName,
+            email: data.user.email ?? prev.email,
+            phone: data.user.phone ?? prev.phone,
+            address: data.user.address ?? prev.address,
+            city: data.user.city ?? prev.city,
+            country: data.user.country ?? prev.country,
+            dateOfBirth: data.user.dateOfBirth ?? prev.dateOfBirth
+          }))
           // Update profile image state
           if (data.user.profileImage) {
-            console.log('Setting profile image:', data.user.profileImage)
-            const fullUrl = data.user.profileImage.startsWith('http') 
-              ? data.user.profileImage 
-              : `${API_BASE_URL}${data.user.profileImage}`
-            console.log('Full profile image URL:', fullUrl)
             setProfileImage(data.user.profileImage)
           }
         }
@@ -389,12 +396,32 @@ const ProfilePage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: storedUser._id,
-          ...profile
+          // Backend stores the name as firstName — send it under the right key,
+          // otherwise the name change is silently ignored and reverts on refresh.
+          firstName: profile.name,
+          lastName: profile.lastName,
+          phone: profile.phone,
+          address: profile.address,
+          city: profile.city,
+          country: profile.country,
+          dateOfBirth: profile.dateOfBirth,
+          bankDetails: profile.bankDetails,
+          upiId: profile.upiId
         })
       })
       const data = await res.json()
       if (data.user) {
-        localStorage.setItem('user', JSON.stringify(data.user))
+        // Merge so fields the endpoint doesn't return (e.g. profileImage) are kept.
+        const merged = { ...storedUser, ...data.user }
+        localStorage.setItem('user', JSON.stringify(merged))
+        // Reflect the saved values in the form immediately.
+        setProfile(prev => ({
+          ...prev,
+          name: data.user.firstName ?? prev.name,
+          lastName: data.user.lastName ?? prev.lastName,
+          phone: data.user.phone ?? prev.phone,
+          address: data.user.address ?? prev.address
+        }))
         setEditing(false)
         toast.success('Profile updated successfully!')
       } else {

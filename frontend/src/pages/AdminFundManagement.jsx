@@ -35,6 +35,16 @@ const AdminFundManagement = () => {
     fetchTransactions()
   }, [filterType, filterAccountType, startDate, endDate])
 
+  // Format a date as the LOCAL yyyy-mm-dd (same day the admin sees in the table),
+  // so date-range filtering compares like-for-like with the <input type="date"> values.
+  const toLocalYmd = (date) => {
+    const d = new Date(date)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+
   const fetchTransactions = async () => {
     setLoading(true)
     try {
@@ -57,16 +67,17 @@ const AdminFundManagement = () => {
             !t.type?.toLowerCase().includes('challenge')
           )
         }
-        // Date filter
-        if (startDate) {
-          const start = new Date(startDate)
-          start.setHours(0, 0, 0, 0)
-          filtered = filtered.filter(t => new Date(t.createdAt) >= start)
-        }
-        if (endDate) {
-          const end = new Date(endDate)
-          end.setHours(23, 59, 59, 999)
-          filtered = filtered.filter(t => new Date(t.createdAt) <= end)
+        // Date filter - compare the transaction's LOCAL date (yyyy-mm-dd) against the
+        // picked dates as plain strings. This matches the date the admin sees in the
+        // table and avoids timezone off-by-one issues from Date math.
+        if (startDate || endDate) {
+          filtered = filtered.filter(t => {
+            if (!t.createdAt) return false
+            const ymd = toLocalYmd(t.createdAt)
+            if (startDate && ymd < startDate) return false
+            if (endDate && ymd > endDate) return false
+            return true
+          })
         }
         setTransactions(filtered)
         
@@ -132,10 +143,16 @@ const AdminFundManagement = () => {
   }
 
   const filteredTransactions = transactions.filter(txn => {
-    const matchesSearch = (txn.transactionRef || txn._id)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      txn.userId?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      txn.userId?.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesSearch
+    if (!searchTerm.trim()) return true
+    const q = searchTerm.toLowerCase()
+    const fullName = `${txn.userId?.firstName || ''} ${txn.userId?.lastName || ''}`.trim().toLowerCase()
+    return (
+      (txn.transactionRef || txn._id || '').toLowerCase().includes(q) ||
+      txn.userId?.firstName?.toLowerCase().includes(q) ||
+      txn.userId?.lastName?.toLowerCase().includes(q) ||
+      fullName.includes(q) ||
+      txn.userId?.email?.toLowerCase().includes(q)
+    )
   })
 
   const exportToExcel = () => {
@@ -245,9 +262,28 @@ const AdminFundManagement = () => {
 
       {/* Transactions Table */}
       <div className="bg-dark-800 rounded-xl border border-gray-800 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 border-b border-gray-800">
-          <h2 className="text-white font-semibold text-lg">All Transactions</h2>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 border-b border-gray-800 overflow-x-auto">
+          <h2 className="text-white font-semibold text-lg whitespace-nowrap">All Transactions</h2>
+          <div className="flex flex-row items-center gap-3 flex-nowrap min-w-max">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by user or transaction ID..."
+                className="w-64 bg-dark-700 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-white focus:outline-none focus:border-gray-600"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}

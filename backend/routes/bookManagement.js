@@ -699,12 +699,65 @@ router.get('/trades', async (req, res) => {
 // Drives the AdminABookOrders dashboard.
 router.get('/a-book/trades', async (req, res) => {
   try {
-    const { status, limit = 50, offset = 0 } = req.query
+    const { status, limit = 1000, offset = 0, search, startDate, endDate } = req.query
 
     const aBookAssignments = await BookAssignment.find({ bookType: 'A_BOOK', isActive: true }).select('userId')
     const aBookUserIds = aBookAssignments.map(a => a.userId)
 
-    let query = { userId: { $in: aBookUserIds } }
+    // baseQuery = all A-Book trades, narrowed by the user search and date range
+    // (but NOT by the open/closed tab). Stats are computed over this so they reflect
+    // the active search/date filters while staying consistent across tabs.
+    const baseQuery = { userId: { $in: aBookUserIds } }
+
+    // User / trade-ID search
+    if (search && search.trim()) {
+      const term = search.trim()
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const regex = new RegExp(escaped, 'i')
+
+      const userOr = [
+        { firstName: regex },
+        { lastName: regex },
+        { email: regex }
+      ]
+      const tokens = term.split(/\s+/).filter(Boolean)
+      if (tokens.length > 1) {
+        userOr.push({
+          $and: tokens.map((t) => {
+            const r = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+            return { $or: [{ firstName: r }, { lastName: r }] }
+          })
+        })
+      }
+      // Only consider A-Book users that also match the search
+      const matchingUsers = await User.find({
+        _id: { $in: aBookUserIds },
+        $or: userOr
+      }).select('_id')
+      const matchedIds = matchingUsers.map(u => u._id)
+
+      // Keep the A-Book scope (baseQuery.userId) AND require a search match. The
+      // tradeId branch stays scoped to A-Book because the top-level userId filter
+      // is AND'd with this $or.
+      baseQuery.$or = [
+        { userId: { $in: matchedIds } },
+        { tradeId: regex }
+      ]
+    }
+
+    // Date range filter (on openedAt - the "Open Time" shown in the table)
+    if (startDate || endDate) {
+      baseQuery.openedAt = {}
+      if (startDate) baseQuery.openedAt.$gte = new Date(startDate)
+      if (endDate) {
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        baseQuery.openedAt.$lte = end
+      }
+    }
+
+    // The trades LIST also respects the active tab (Open Positions / Trade History).
+    let query = { ...baseQuery }
     if (status && status !== 'all') {
       query.status = status.toUpperCase()
     }
@@ -717,10 +770,13 @@ router.get('/a-book/trades', async (req, res) => {
       .limit(parseInt(limit))
 
     const total = await Trade.countDocuments(query)
-    const openTrades = await Trade.countDocuments({ ...query, status: 'OPEN' })
-    const closedTrades = await Trade.countDocuments({ ...query, status: 'CLOSED' })
 
-    const allTrades = await Trade.find(query).select('quantity realizedPnl commission status')
+    // The summary cards are computed over ALL A-Book trades (tab-independent), so the
+    // totals stay consistent whether the operator is on Open Positions or History.
+    const openTrades = await Trade.countDocuments({ ...baseQuery, status: 'OPEN' })
+    const closedTrades = await Trade.countDocuments({ ...baseQuery, status: 'CLOSED' })
+
+    const allTrades = await Trade.find(baseQuery).select('quantity realizedPnl commission status')
     const totalVolume = allTrades.reduce((sum, t) => sum + (t.quantity || 0), 0)
     const totalPnl = allTrades
       .filter(t => t.status === 'CLOSED')

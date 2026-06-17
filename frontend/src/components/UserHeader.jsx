@@ -18,8 +18,11 @@ import {
   ChevronDown
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
-import { API_URL } from '../config/api'
+import { API_URL, API_BASE_URL } from '../config/api'
 import LanguageDropdown from './LanguageDropdown'
+
+// Build a full image URL from a stored path (handles absolute URLs and /uploads paths)
+const avatarSrc = (img) => (img ? (img.startsWith('http') ? img : `${API_BASE_URL}${img}`) : '')
 
 const UserHeader = () => {
   const navigate = useNavigate()
@@ -371,10 +374,14 @@ const UserHeader = () => {
         <div className="relative" ref={profileDropdownRef}>
           <button
             onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-            className="p-2 rounded-full transition-colors border hover:bg-dark-700 text-gray-400 border-gray-600"
+            className="rounded-full transition-colors border hover:bg-dark-700 text-gray-400 border-gray-600 overflow-hidden flex items-center justify-center w-10 h-10"
             title="Profile"
           >
-            <User size={20} />
+            {user.profileImage ? (
+              <img src={avatarSrc(user.profileImage)} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <User size={20} />
+            )}
           </button>
           
           {/* Profile Dropdown Menu */}
@@ -383,9 +390,13 @@ const UserHeader = () => {
               <div className="p-4">
                 {/* User Email */}
                 <div className={`flex items-center gap-3 pb-3 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <div className={`p-2 rounded-full ${isDarkMode ? 'bg-dark-700' : 'bg-gray-100'}`}>
-                    <User size={20} className={isDarkMode ? 'text-gray-400' : 'text-gray-600'} />
-                  </div>
+                  {user.profileImage ? (
+                    <img src={avatarSrc(user.profileImage)} alt="Profile" className="w-10 h-10 rounded-full object-cover" />
+                  ) : (
+                    <div className={`p-2 rounded-full ${isDarkMode ? 'bg-dark-700' : 'bg-gray-100'}`}>
+                      <User size={20} className={isDarkMode ? 'text-gray-400' : 'text-gray-600'} />
+                    </div>
+                  )}
                   <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{getMaskedEmail()}</span>
                   {kycStatus === 'approved' ? (
                     <div className="ml-auto p-2" title="Account Verified">

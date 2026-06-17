@@ -12,21 +12,59 @@ import MasterTrader from '../models/MasterTrader.js'
 
 const router = express.Router()
 
+// Build a search filter on the trade query: matches User (name/email) or Trade ID only.
+// Because userId is a ref, we first resolve matching user _ids, then OR them with the
+// trade ID match. Full-name search ("First Last") is supported by also matching the
+// concatenated firstName + lastName. Mutates `query` in place.
+const applyTradeSearch = async (query, search) => {
+  const term = search.trim()
+  // Escape regex special chars so user input can't break the query
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(escape(term), 'i')
+
+  const userOr = [
+    { firstName: regex },
+    { lastName: regex },
+    { email: regex }
+  ]
+
+  // Full-name search ("First Last"): every word must appear in firstName or lastName.
+  // Token-based so it works on any MongoDB version (no $expr needed).
+  const tokens = term.split(/\s+/).filter(Boolean)
+  if (tokens.length > 1) {
+    userOr.push({
+      $and: tokens.map((t) => {
+        const r = new RegExp(escape(t), 'i')
+        return { $or: [{ firstName: r }, { lastName: r }] }
+      })
+    })
+  }
+
+  const matchingUsers = await User.find({ $or: userOr }).select('_id')
+  const userIds = matchingUsers.map(u => u._id)
+
+  // Restrict trades to the matched users OR a matching trade ID. Nothing else.
+  query.$or = [
+    { userId: { $in: userIds } },
+    { tradeId: regex }
+  ]
+}
+
 // GET /api/admin/trade/all - Get all trades with pagination (for admin dashboard)
 router.get('/all', async (req, res) => {
   try {
-    const { status, limit = 20, offset = 0, startDate, endDate, accountType } = req.query
+    const { status, limit = 20, offset = 0, startDate, endDate, accountType, search } = req.query
 
     let query = {}
     if (status) query.status = status
-    
+
     // Account type filter (forex vs challenge)
     if (accountType === 'challenge') {
       query.isChallengeAccount = true
     } else if (accountType === 'forex') {
       query.isChallengeAccount = { $ne: true }
     }
-    
+
     // Date filter
     if (startDate || endDate) {
       query.createdAt = {}
@@ -38,13 +76,28 @@ router.get('/all', async (req, res) => {
       }
     }
 
+    // Search filter - matches user (name/email) or trade ID across ALL trades
+    if (search && search.trim()) {
+      await applyTradeSearch(query, search)
+    }
+
     const total = await Trade.countDocuments(query)
-    const trades = await Trade.find(query)
-      .populate('userId', 'firstName lastName email')
-      .populate('tradingAccountId', 'accountId balance')
-      .sort({ createdAt: -1 })
-      .skip(parseInt(offset))
-      .limit(parseInt(limit))
+
+    // Sort OPEN trades first, then the rest; newest first within each group.
+    // Done server-side via aggregation so the ordering holds across all pages.
+    let trades = await Trade.aggregate([
+      { $match: query },
+      { $addFields: { _statusOrder: { $cond: [{ $eq: ['$status', 'OPEN'] }, 0, 1] } } },
+      { $sort: { _statusOrder: 1, createdAt: -1 } },
+      { $skip: parseInt(offset) },
+      { $limit: parseInt(limit) }
+    ])
+    // aggregate() doesn't auto-populate refs, so populate the results afterwards
+    // to keep the same shape the frontend expects (userId/tradingAccountId objects).
+    trades = await Trade.populate(trades, [
+      { path: 'userId', select: 'firstName lastName email' },
+      { path: 'tradingAccountId', select: 'accountId balance' }
+    ])
 
     res.json({
       success: true,
@@ -64,7 +117,7 @@ router.get('/all', async (req, res) => {
 // pnl = net realized P&L of closed trades (trade profit/loss).
 router.get('/stats', async (req, res) => {
   try {
-    const { status, startDate, endDate, accountType } = req.query
+    const { status, startDate, endDate, accountType, search } = req.query
 
     let query = {}
     if (status) query.status = status
@@ -81,6 +134,9 @@ router.get('/stats', async (req, res) => {
         end.setHours(23, 59, 59, 999)
         query.createdAt.$lte = end
       }
+    }
+    if (search && search.trim()) {
+      await applyTradeSearch(query, search)
     }
 
     const agg = await Trade.aggregate([

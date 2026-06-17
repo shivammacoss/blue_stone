@@ -69,6 +69,22 @@ const Account = () => {
   const [selectedChallengeAccount, setSelectedChallengeAccount] = useState(null)
   const [showAccountMenu, setShowAccountMenu] = useState(null)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(null)
+  // Close the account "..." dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!showAccountMenu) return
+    const handlePointer = (e) => {
+      if (!e.target.closest('[data-account-menu]')) setShowAccountMenu(null)
+    }
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setShowAccountMenu(null)
+    }
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [showAccountMenu])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
   const [showAccountInfoModal, setShowAccountInfoModal] = useState(null)
   const [pinSecurityEnabled, setPinSecurityEnabled] = useState(() => {
@@ -909,6 +925,16 @@ const Account = () => {
                 <div key={account._id} className={`${isDarkMode ? 'bg-dark-800 border-gray-800' : 'bg-white border-gray-200 shadow-sm'} rounded-xl border`}>
                   {/* Exness-style Horizontal Card */}
                   <div className={`${isMobile ? 'p-3' : 'p-4 px-6'}`}>
+                   <div className="flex items-center gap-4">
+                    {/* Account type photo - left, vertically centered */}
+                    {account.accountTypeId?.image && (
+                      <img
+                        src={account.accountTypeId.image.startsWith('http') ? account.accountTypeId.image : `${API_BASE_URL}${account.accountTypeId.image}`}
+                        alt={account.accountTypeId?.name || 'Account'}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-gray-600 shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
                     {/* Top Row - Account Info */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
@@ -970,7 +996,7 @@ const Account = () => {
                             >
                               <Minus size={16} /> Withdraw
                             </button>
-                            <div className="relative">
+                            <div className="relative" data-account-menu>
                               <button
                                 onClick={() => setShowAccountMenu(showAccountMenu === account._id ? null : account._id)}
                                 className={`px-3 py-2 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300 hover:bg-dark-700' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
@@ -1020,6 +1046,8 @@ const Account = () => {
                         )}
                       </div>
                     </div>
+                    </div>
+                   </div>
                   </div>
                 </div>
               ))}
@@ -1037,7 +1065,7 @@ const Account = () => {
       {/* Create Account Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`rounded-xl p-6 w-full max-w-2xl border max-h-[90vh] overflow-y-auto ${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-300'}`}>
+          <div className={`rounded-xl p-6 w-full max-w-2xl border max-h-[90vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${isDarkMode ? 'bg-dark-800 border-gray-700' : 'bg-white border-gray-300'}`}>
             <div className="flex items-center justify-between mb-6">
               <h3 className={`font-semibold text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Open New Account</h3>
               <button 
@@ -1084,7 +1112,7 @@ const Account = () => {
               <label className="block text-gray-400 text-sm mb-4">
                 {createAccountTab === 'demo' ? 'Select Demo Account Type' : 'Select Live Account Type'}
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 {accountTypes.filter(t => createAccountTab === 'demo' ? t.isDemo : !t.isDemo).length === 0 ? (
                   <p className="text-gray-500 text-sm text-center py-8 col-span-2">
                     No {createAccountTab === 'demo' ? 'demo' : 'live'} account types available
@@ -1112,9 +1140,22 @@ const Account = () => {
                             : 'border-gray-700 hover:border-gray-600'
                         }`}
                       >
+                        {/* Account type photo - centered at the top */}
+                        {type.image && (
+                          <div className="flex justify-center mb-3">
+                            <img
+                              src={type.image.startsWith('http') ? type.image : `${API_BASE_URL}${type.image}`}
+                              alt={type.name}
+                              className="w-20 h-20 rounded-full object-cover border-2 border-gray-600"
+                            />
+                          </div>
+                        )}
+
                         {/* Header */}
                         <div className="flex items-center gap-3 mb-3">
-                          <span className="text-2xl">{icon}</span>
+                          {!type.image && (
+                            <span className="text-2xl">{icon}</span>
+                          )}
                           <span className="text-white font-bold text-lg">{type.name}</span>
                           {type.isAlgo && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/20 text-cyan-400 flex items-center gap-0.5"><Lock size={9} /> ALGO</span>

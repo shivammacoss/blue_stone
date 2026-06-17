@@ -11,7 +11,7 @@ const router = express.Router()
 router.get('/user/:userId', async (req, res) => {
   try {
     const accounts = await TradingAccount.find({ userId: req.params.userId })
-      .populate('accountTypeId', 'name description minDeposit leverage exposureLimit isDemo isAlgo algoLockDays')
+      .populate('accountTypeId', 'name description image minDeposit leverage exposureLimit isDemo isAlgo algoLockDays')
       .sort({ createdAt: -1 })
     res.json({ success: true, accounts })
   } catch (error) {

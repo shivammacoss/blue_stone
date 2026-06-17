@@ -395,7 +395,7 @@ router.put('/update-profile', async (req, res) => {
 
     await user.save()
 
-    res.json({ 
+    res.json({
       message: 'Profile updated successfully',
       user: {
         _id: user._id,
@@ -409,6 +409,7 @@ router.put('/update-profile', async (req, res) => {
         dateOfBirth: user.dateOfBirth,
         bankDetails: user.bankDetails,
         upiId: user.upiId,
+        profileImage: user.profileImage,
         createdAt: user.createdAt
       }
     })

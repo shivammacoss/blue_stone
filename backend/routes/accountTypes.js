@@ -70,10 +70,11 @@ router.get('/all', async (req, res) => {
 // POST /api/account-types - Create account type (admin)
 router.post('/', async (req, res) => {
   try {
-    const { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isDemo, demoBalance, isAlgo, algoLockDays, algoRoiMin, algoRoiMax } = req.body
+    const { name, description, image, minDeposit, leverage, exposureLimit, minSpread, commission, isDemo, demoBalance, isAlgo, algoLockDays, algoRoiMin, algoRoiMax } = req.body
     const accountType = new AccountType({
       name,
       description,
+      image: image || '',
       minDeposit,
       leverage,
       exposureLimit,
@@ -96,10 +97,14 @@ router.post('/', async (req, res) => {
 // PUT /api/account-types/:id - Update account type (admin)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance, isAlgo, algoLockDays, algoRoiMin, algoRoiMax } = req.body
+    const { name, description, image, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance, isAlgo, algoLockDays, algoRoiMin, algoRoiMax } = req.body
+    const updateFields = { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance, isAlgo: isAlgo || false, algoLockDays: isAlgo ? (algoLockDays || 90) : 90, algoRoiMin: isAlgo ? (algoRoiMin ?? 2) : 2, algoRoiMax: isAlgo ? (algoRoiMax ?? 5) : 5 }
+    // Only touch image when the caller actually sent it, so other updates
+    // (e.g. enable/disable toggles) don't accidentally wipe an existing photo.
+    if (image !== undefined) updateFields.image = image || ''
     const accountType = await AccountType.findByIdAndUpdate(
       req.params.id,
-      { name, description, minDeposit, leverage, exposureLimit, minSpread, commission, isActive, isDemo, demoBalance, isAlgo: isAlgo || false, algoLockDays: isAlgo ? (algoLockDays || 90) : 90, algoRoiMin: isAlgo ? (algoRoiMin ?? 2) : 2, algoRoiMax: isAlgo ? (algoRoiMax ?? 5) : 5 },
+      updateFields,
       { new: true }
     )
     if (!accountType) {

@@ -8,7 +8,10 @@ import {
   CheckCircle,
   XCircle,
   Activity,
-  Upload
+  Upload,
+  Download,
+  Search,
+  X
 } from 'lucide-react'
 import { API_URL } from '../config/api'
 import priceStreamService from '../services/priceStream'
@@ -25,6 +28,10 @@ const AdminABookOrders = () => {
   })
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('open')
+  const [searchInput, setSearchInput] = useState('')   // raw text box value
+  const [searchTerm, setSearchTerm] = useState('')     // debounced value sent to API
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [livePrices, setLivePrices] = useState({})
   const [mt5Status, setMt5Status] = useState(null)
   const [reconcile, setReconcile] = useState(null)
@@ -36,7 +43,13 @@ const AdminABookOrders = () => {
   useEffect(() => {
     fetchTrades()
     fetchMt5Status()
-  }, [activeTab])
+  }, [activeTab, searchTerm, startDate, endDate])
+
+  // Debounce the search box -> searchTerm so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput.trim()), 400)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   useEffect(() => {
     const unsubscribe = priceStreamService.subscribe('aBookOrders', (prices) => {
@@ -56,7 +69,10 @@ const AdminABookOrders = () => {
     setLoading(true)
     try {
       const status = activeTab === 'open' ? 'OPEN' : 'CLOSED'
-      const res = await fetch(`${API_URL}/book/a-book/trades?status=${status}&limit=100`)
+      const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
+      const startParam = startDate ? `&startDate=${startDate}` : ''
+      const endParam = endDate ? `&endDate=${endDate}` : ''
+      const res = await fetch(`${API_URL}/book/a-book/trades?status=${status}&limit=1000${searchParam}${startParam}${endParam}`)
       const data = await res.json()
       if (data.success) {
         setTrades(data.trades)
@@ -181,6 +197,47 @@ const AdminABookOrders = () => {
   const formatDate = (date) => {
     if (!date) return '-'
     return new Date(date).toLocaleString()
+  }
+
+  const exportToExcel = () => {
+    if (trades.length === 0) {
+      alert('No trades to export')
+      return
+    }
+
+    const formatDateForExcel = (dateStr) => {
+      if (!dateStr) return ''
+      const d = new Date(dateStr)
+      const day = String(d.getDate()).padStart(2, '0')
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      return `${d.getFullYear()}-${month}-${day}`
+    }
+
+    const headers = ['Trade ID', 'User', 'Email', 'Account', 'Symbol', 'Type', 'Volume', 'Entry Price', 'Commission', 'Swap', 'P&L', 'LP Sync', 'MT5 Position', 'Status', 'Open Time']
+    const rows = trades.map(trade => [
+      trade.tradeId || '',
+      (trade.userId?.firstName || 'N/A').replace(/,/g, ' '),
+      trade.userId?.email || '',
+      trade.tradingAccountId?.accountNumber || 'N/A',
+      trade.symbol || '',
+      trade.side || '',
+      trade.quantity || 0,
+      trade.openPrice?.toFixed(5) || '',
+      (trade.commission || 0).toFixed(2),
+      (trade.swap || 0).toFixed(2),
+      calculateFloatingPnl(trade).toFixed(2),
+      trade.lpSyncStatus || 'N/A',
+      trade.mt5PositionId || '',
+      trade.status || '',
+      formatDateForExcel(trade.openedAt)
+    ])
+
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `abook_trades_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
   }
 
   return (
@@ -326,30 +383,88 @@ const AdminABookOrders = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-4 mb-4">
-        <button
-          onClick={() => setActiveTab('open')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-            activeTab === 'open'
-              ? 'bg-primary-500 text-white'
-              : 'bg-dark-800 text-gray-400 hover:text-white border border-gray-700'
-          }`}
-        >
-          <TrendingUp size={16} />
-          Open Positions
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-            activeTab === 'history'
-              ? 'bg-primary-500 text-white'
-              : 'bg-dark-800 text-gray-400 hover:text-white border border-gray-700'
-          }`}
-        >
-          <Clock size={16} />
-          Trade History
-        </button>
+      {/* Tabs + Filters */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+        <div className="flex gap-4 flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('open')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              activeTab === 'open'
+                ? 'bg-primary-500 text-white'
+                : 'bg-dark-800 text-gray-400 hover:text-white border border-gray-700'
+            }`}
+          >
+            <TrendingUp size={16} />
+            Open Positions
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              activeTab === 'history'
+                ? 'bg-primary-500 text-white'
+                : 'bg-dark-800 text-gray-400 hover:text-white border border-gray-700'
+            }`}
+          >
+            <Clock size={16} />
+            Trade History
+          </button>
+        </div>
+
+        {/* Search / date range / export - horizontally scrollable when it overflows */}
+        <div className="overflow-x-auto min-w-0 [&::-webkit-scrollbar]:hidden [scrollbar-width:none] [-ms-overflow-style:none]">
+          <div className="flex flex-row items-center gap-3 w-max">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search by user or trade ID..."
+              className="w-64 bg-dark-800 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-white focus:outline-none focus:border-gray-600"
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                title="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-dark-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-gray-600 [&::-webkit-calendar-picker-indicator]:invert"
+              title="Start Date"
+            />
+            <span className="text-gray-500">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-dark-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-gray-600 [&::-webkit-calendar-picker-indicator]:invert"
+              title="End Date"
+            />
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 text-sm whitespace-nowrap"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <button
+            onClick={exportToExcel}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 whitespace-nowrap"
+          >
+            <Download size={18} /> Excel
+          </button>
+          </div>
+        </div>
       </div>
 
       {/* View-only banner */}
