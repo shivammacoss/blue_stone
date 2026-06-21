@@ -6,6 +6,7 @@ import priceService from '../services/priceService'
 import binanceApiService from '../services/binanceApi'
 import priceStreamService from '../services/priceStream'
 import { useTheme } from '../context/ThemeContext'
+import { isMarketOpen } from '../lib/marketHours'
 import { API_URL } from '../config/api'
 import toast from 'react-hot-toast'
 import TVChartContainer from '../components/TVChartContainer'
@@ -33,6 +34,7 @@ const TradingPage = () => {
   const [activePositionTab, setActivePositionTab] = useState('Positions')
   const [oneClickTrading, setOneClickTrading] = useState(false)
   const [selectedSide, setSelectedSide] = useState('BUY') // BUY or SELL
+  const [, setMarketTick] = useState(0) // forces re-eval of market open/closed across the day boundary
   const [openTabs, setOpenTabs] = useState([{ symbol: 'XAUUSD', name: 'CFDs on Gold (US$ / OZ)', bid: 0, ask: 0, spread: 0 }])
   const [activeTab, setActiveTab] = useState('XAUUSD')
   const [showFourCharts, setShowFourCharts] = useState(false)
@@ -532,6 +534,21 @@ const TradingPage = () => {
     return 'Forex'
   }
 
+  // Re-evaluate market open/closed every 30s so buy/sell buttons flip
+  // automatically when the weekend starts/ends while the page stays open.
+  useEffect(() => {
+    const id = setInterval(() => setMarketTick(t => t + 1), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Is the currently selected instrument closed for the weekend?
+  // Crypto (and any symbols the backend marks weekendOpen) stay tradable.
+  const marketClosed = (() => {
+    const inst = selectedInstrument || {}
+    const category = inst.category || getSymbolCategory(inst.symbol)
+    return !isMarketOpen({ ...inst, category })
+  })()
+
   // Fetch admin-set spreads for instruments
   const fetchAdminSpreads = async () => {
     try {
@@ -846,7 +863,13 @@ const TradingPage = () => {
       setTradeError(`Trading blocked! Kill Switch active for ${killSwitchTimeLeft}`)
       return
     }
-    
+
+    // Weekend market-closed guard (crypto + weekend-open symbols stay tradable)
+    if (marketClosed) {
+      setTradeError('Market is closed on weekends for this instrument. Trading will resume when the market reopens.')
+      return
+    }
+
     setIsExecutingTrade(true)
     setTradeError('')
     setTradeSuccess('')
@@ -979,7 +1002,13 @@ const TradingPage = () => {
       setTradeError(`Trading blocked! Kill Switch active for ${killSwitchTimeLeft}`)
       return
     }
-    
+
+    // Weekend market-closed guard (crypto + weekend-open symbols stay tradable)
+    if (marketClosed) {
+      setTradeError('Market is closed on weekends for this instrument. Trading will resume when the market reopens.')
+      return
+    }
+
     setIsExecutingTrade(true)
     setTradeError('')
     setTradeSuccess('')
@@ -2181,25 +2210,31 @@ const TradingPage = () => {
             {orderTab === 'Market' ? (
               <>
                 <div className={`p-3 flex-1 overflow-y-auto ${!isDarkMode ? 'light-scrollbar' : ''}`}>
+                  {/* Weekend market-closed notice */}
+                  {marketClosed && (
+                    <div className="mb-3 p-2 rounded bg-yellow-500/15 border border-yellow-500/40 text-yellow-500 text-xs text-center">
+                      Market closed (weekend). Trading for {selectedInstrument.symbol} will resume when the market reopens.
+                    </div>
+                  )}
                   {/* One-Click Buy/Sell Buttons */}
                   <div className="flex gap-2 mb-3">
-                    <button 
+                    <button
                       onClick={() => executeMarketOrder('SELL')}
-                      disabled={isExecutingTrade}
+                      disabled={isExecutingTrade || marketClosed}
                       className="flex-1 rounded py-3 text-center transition-colors bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="text-white text-[10px] font-medium">SELL</div>
                       <div className="text-white font-mono text-lg font-bold">
-                        {selectedInstrument.symbol?.includes('JPY') 
+                        {selectedInstrument.symbol?.includes('JPY')
                           ? selectedInstrument.bid?.toFixed(3)
                           : ['BTCUSD', 'ETHUSD', 'XAUUSD'].includes(selectedInstrument.symbol)
                             ? selectedInstrument.bid?.toFixed(2)
                             : selectedInstrument.bid?.toFixed(5)}
                       </div>
                     </button>
-                    <button 
+                    <button
                       onClick={() => executeMarketOrder('BUY')}
-                      disabled={isExecutingTrade}
+                      disabled={isExecutingTrade || marketClosed}
                       className="flex-1 rounded py-3 text-center transition-colors bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="text-white text-[10px] font-medium">BUY</div>
@@ -2384,16 +2419,16 @@ const TradingPage = () => {
                 )}
 
                 <div className={`p-3 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-                  <button 
+                  <button
                     onClick={() => executeMarketOrder(selectedSide)}
-                    disabled={isExecutingTrade}
+                    disabled={isExecutingTrade || marketClosed}
                     className={`w-full py-3 rounded font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      selectedSide === 'BUY' 
+                      selectedSide === 'BUY'
                         ? 'bg-blue-600/20 border border-blue-600 hover:bg-blue-600/30 text-blue-400'
                         : 'bg-red-600/20 border border-red-600 hover:bg-red-600/30 text-red-400'
                     }`}
                   >
-                    {isExecutingTrade ? 'Executing...' : `Open ${selectedSide} Order`}
+                    {marketClosed ? 'Market Closed' : isExecutingTrade ? 'Executing...' : `Open ${selectedSide} Order`}
                   </button>
                   <div className="text-center text-gray-500 text-xs mt-2">
                     {volume} lots @ {selectedSide === 'BUY' ? selectedInstrument.ask?.toFixed(2) : selectedInstrument.bid?.toFixed(2)}
@@ -2561,16 +2596,16 @@ const TradingPage = () => {
                 )}
 
                 <div className={`p-3 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-                  <button 
+                  <button
                     onClick={executePendingOrder}
-                    disabled={isExecutingTrade || pendingOrderWarning}
+                    disabled={isExecutingTrade || pendingOrderWarning || marketClosed}
                     className={`w-full py-3 rounded font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      pendingOrderWarning 
-                        ? 'bg-gray-600/20 border border-gray-600 text-gray-400 cursor-not-allowed' 
+                      pendingOrderWarning || marketClosed
+                        ? 'bg-gray-600/20 border border-gray-600 text-gray-400 cursor-not-allowed'
                         : 'bg-blue-600/20 border border-blue-600 hover:bg-blue-600/30 text-blue-400'
                     }`}
                   >
-                    {isExecutingTrade ? 'Placing...' : pendingOrderWarning ? 'Invalid Price' : `Place ${pendingOrderType}`}
+                    {marketClosed ? 'Market Closed' : isExecutingTrade ? 'Placing...' : pendingOrderWarning ? 'Invalid Price' : `Place ${pendingOrderType}`}
                   </button>
                   <div className="text-center text-gray-500 text-xs mt-2">
                     {volume} lots @ {entryPrice || '--.--'}

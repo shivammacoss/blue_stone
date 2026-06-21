@@ -2,6 +2,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 import express from 'express'
 import infowayService from '../services/infowayService.js'
+import { isWeekendOpenInstrument, isMarketOpen } from '../services/marketHoursService.js'
 
 const router = express.Router()
 
@@ -65,6 +66,10 @@ router.get('/instruments', async (req, res) => {
         maxVolume: 100,
         volumeStep: 0.01,
         popular: isPopular,
+        // weekendOpen: trades 24/7 (crypto + configured symbols).
+        // marketOpen: is it tradable right now (accounts for the current day).
+        weekendOpen: isWeekendOpenInstrument(symbol, category),
+        marketOpen: isMarketOpen(symbol, category),
         bid: cached.bid || 0,
         ask: cached.ask || 0,
         change: cached.change || 0,
@@ -84,7 +89,9 @@ router.get('/instruments', async (req, res) => {
         minVolume: 0.01,
         maxVolume: 100,
         volumeStep: 0.01,
-        popular: true
+        popular: true,
+        weekendOpen: isWeekendOpenInstrument(symbol, 'Indices'),
+        marketOpen: isMarketOpen(symbol, 'Indices')
       }))
       instruments.push(...fallbackIndices)
     }
@@ -101,7 +108,9 @@ router.get('/instruments', async (req, res) => {
         minVolume: 0.01,
         maxVolume: 100,
         volumeStep: 0.01,
-        popular: true
+        popular: true,
+        weekendOpen: isWeekendOpenInstrument(symbol, 'Commodities'),
+        marketOpen: isMarketOpen(symbol, 'Commodities')
       }))
       instruments.push(...fallbackCommodities)
     }
@@ -182,6 +191,11 @@ function getContractSize(symbol) {
   if (category === 'Energy') return 1000
   return 100000 // Forex default
 }
+
+// GET /api/prices/feed-status - Infoway feed health (frozen when key expired)
+router.get('/feed-status', (req, res) => {
+  res.json({ success: true, ...infowayService.getFeedStatus() })
+})
 
 // GET /api/prices/:symbol - Get single symbol price
 router.get('/:symbol', async (req, res) => {

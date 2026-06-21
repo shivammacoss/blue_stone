@@ -50,6 +50,39 @@ let isConnected = false
 const connections = {}
 let heartbeatIntervals = {}
 
+// Feed health / API-key state.
+// When the Infoway API key expires (or the feed otherwise goes down) we keep
+// the last known prices in `priceCache` FROZEN — the cache is never cleared, so
+// every consumer (trade engine, /api/prices, the broadcast loop) keeps serving
+// the last traded price instead of zeros/blanks until the feed recovers.
+let apiKeyValid = true
+let frozenSince = null // timestamp when prices were frozen due to feed/key failure
+let lastTickAt = 0 // timestamp of the most recent live price update
+
+// Called whenever a fresh, valid price tick arrives — proves the key is good
+// and clears any frozen state.
+function markFeedAlive() {
+  lastTickAt = Date.now()
+  if (!apiKeyValid) {
+    apiKeyValid = true
+    frozenSince = null
+    console.log('[Infoway] Live feed recovered — prices are flowing again')
+    if (onConnectionChange) onConnectionChange(true)
+  }
+}
+
+// Called when the key looks expired/invalid (e.g. WS handshake returns 401/403).
+// Prices stay frozen at their last cached values; the cache is intentionally
+// left untouched.
+function markKeyExpired(reason) {
+  if (apiKeyValid) {
+    apiKeyValid = false
+    frozenSince = Date.now()
+    console.error(`[Infoway] API key appears expired/invalid (${reason}). Prices are now FROZEN at last known values; the cache will NOT be cleared.`)
+    if (onConnectionChange) onConnectionChange(false)
+  }
+}
+
 // Dynamic symbol lists (fetched from Infoway API)
 let dynamicSymbols = {
   forex: [],
@@ -310,6 +343,7 @@ function createConnection(businessType, endpoint, symbols) {
             }
 
             priceCache.set(internalSymbol, priceData)
+            markFeedAlive()
 
             if (onPriceUpdate) {
               onPriceUpdate(internalSymbol, priceData)
@@ -317,7 +351,7 @@ function createConnection(businessType, endpoint, symbols) {
           }
         }
       }
-      
+
       // Handle trade push (for additional price data)
       if (message.code === PROTOCOL.TRADE_PUSH && message.data) {
         const { s: symbol, p: price, t: timestamp } = message.data
@@ -345,6 +379,7 @@ function createConnection(businessType, endpoint, symbols) {
             }
 
             priceCache.set(internalSymbol, priceData)
+            markFeedAlive()
 
             if (onPriceUpdate) {
               onPriceUpdate(internalSymbol, priceData)
@@ -352,7 +387,7 @@ function createConnection(businessType, endpoint, symbols) {
           }
         }
       }
-      
+
       // Handle subscription responses
       if (message.code === PROTOCOL.DEPTH_RESPONSE || message.code === PROTOCOL.TRADE_RESPONSE) {
         if (message.msg === 'ok') {
@@ -371,8 +406,26 @@ function createConnection(businessType, endpoint, symbols) {
     console.error(`[Infoway] ${businessType} error:`, error.message)
   })
 
+  // The WS server rejected the upgrade with an HTTP response (no 'open' will
+  // fire). A 401/403 here means the API key is expired/invalid — freeze prices.
+  ws.on('unexpected-response', (req, res) => {
+    console.error(`[Infoway] ${businessType} unexpected response: HTTP ${res.statusCode}`)
+    if (res.statusCode === 401 || res.statusCode === 403) {
+      markKeyExpired(`HTTP ${res.statusCode} on ${businessType}`)
+    }
+  })
+
   ws.on('close', (code, reason) => {
     console.log(`[Infoway] ${businessType} disconnected (${code}): ${reason}`)
+
+    // NOTE: priceCache is intentionally NOT cleared here. If the feed is down
+    // (key expired, network blip, weekend) consumers keep reading the last
+    // traded price — frozen — instead of zeros.
+
+    // 1008 (policy violation) / 4001 are typical auth-failure close codes.
+    if (code === 1008 || code === 4001 || code === 4003) {
+      markKeyExpired(`close code ${code} on ${businessType}`)
+    }
     
     // Clear heartbeat
     if (heartbeatIntervals[businessType]) {
@@ -558,11 +611,26 @@ function isWebSocketConnected() {
 function getConnectionStatus() {
   return {
     isConnected,
+    apiKeyValid,
+    pricesFrozen: !apiKeyValid,
+    frozenSince,
+    lastTickAt,
     connections: Object.entries(connections).map(([type, ws]) => ({
       type,
       connected: ws && ws.readyState === WebSocket.OPEN
     })),
     priceCount: priceCache.size
+  }
+}
+
+// Feed health snapshot. `frozen` is true when the API key looks expired/invalid
+// and we are serving the last known (frozen) prices from cache.
+function getFeedStatus() {
+  return {
+    apiKeyValid,
+    frozen: !apiKeyValid,
+    frozenSince,
+    lastTickAt
   }
 }
 
@@ -613,6 +681,7 @@ export default {
   setOnConnectionChange,
   isWebSocketConnected,
   getConnectionStatus,
+  getFeedStatus,
   categorizeSymbol,
   getSymbolName,
   getDynamicSymbols,

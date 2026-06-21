@@ -9,6 +9,7 @@ import copyTradingEngine from '../services/copyTradingEngine.js'
 import ibEngine from '../services/ibEngineNew.js'
 import MasterTrader from '../models/MasterTrader.js'
 import infowayService from '../services/infowayService.js'
+import { isMarketOpen } from '../services/marketHoursService.js'
 
 // Fetch fresh price from Infoway
 async function getFreshPrice(symbol) {
@@ -91,9 +92,21 @@ router.post('/open', async (req, res) => {
     // Validate order type
     const validOrderTypes = ['MARKET', 'BUY_LIMIT', 'BUY_STOP', 'SELL_LIMIT', 'SELL_STOP']
     if (!validOrderTypes.includes(orderType)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid order type' 
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order type'
+      })
+    }
+
+    // Weekend market-closed guard. The spot market is closed on Sat/Sun; only
+    // crypto (and any symbols configured in WEEKEND_OPEN_SYMBOLS) stay tradable.
+    // Enforced server-side so the rule holds regardless of the client.
+    const marketCategory = infowayService.categorizeSymbol(symbol)
+    if (!isMarketOpen(symbol, marketCategory)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Market is closed on weekends for this instrument. Trading will resume when the market reopens.',
+        code: 'MARKET_WEEKEND_CLOSED'
       })
     }
 
